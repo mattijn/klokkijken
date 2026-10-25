@@ -44,7 +44,7 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .target .word.hit{background:color-mix(in srgb,var(--c) 24%,rgba(10,4,30,.6));box-shadow:0 0 26px color-mix(in srgb,var(--c) 70%,transparent)}
 .word.pop{animation:pop .32s cubic-bezier(.2,1.6,.4,1)}
 .blocks.enter .word{animation:drop .5s cubic-bezier(.2,1.5,.4,1) both;animation-delay:calc(var(--i)*70ms)}
-.blocks.leave .word{animation:leave .3s ease-in both}
+.blocks.leave .word,.digital.leave{animation:leave .3s ease-in both}
 .digital{font:400 clamp(46px,8vw,84px)/1 var(--f-neon);color:var(--cyan);text-shadow:0 0 .12em rgba(62,232,255,.75);font-variant-numeric:tabular-nums}
 .frozen-lbl{font:800 clamp(28px,4.4vw,44px)/1 var(--f-main);color:#DFF7FF;text-shadow:0 0 20px rgba(160,230,255,.9)}
 
@@ -599,7 +599,7 @@ function passGate(now) {
   const [x, y] = at(mod(S.T, 60) / 60 * Math.PI * 2, R * .8);
   burst(x, y, 60); rings.push({x, y, r: 10, life: 1}); floatText(x, y - 40, `+${pts}`);
   kick(12, 90); SFX.gate(S.combo); popCombo();
-  $('#target .blocks').classList.add('leave');
+  $('#target').lastElementChild.classList.add('leave');
   S.gate++; S.phase = 'between';
   setTimeout(nextGate, S.calm ? 150 : 420);
 }
