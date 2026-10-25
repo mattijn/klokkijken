@@ -38,12 +38,7 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .score{font:400 clamp(26px,4vw,40px)/1 var(--f-neon);color:var(--cyan);text-shadow:0 0 14px rgba(62,232,255,.7);font-variant-numeric:tabular-nums}
 .combo{font:800 22px/1 var(--f-main);color:var(--pink);text-shadow:0 0 12px rgba(255,79,179,.6);min-width:3ch}
 .combo.pop{animation:pop .35s cubic-bezier(.2,1.6,.4,1)}
-.dots{display:flex;gap:8px;align-items:center}
-.dot{width:13px;height:13px;border-radius:50%;border:2px solid var(--line);transition:all .2s}
-.dot.frozen{border-radius:3px;transform:rotate(45deg) scale(.9)}
-.dot.build{border-radius:3px;border-color:rgba(255,211,78,.55)}
-.dot.now{border-color:var(--pink);box-shadow:0 0 10px rgba(255,79,179,.6)}
-.dot.done{background:var(--cyan);border-color:var(--cyan)}
+.run{flex:1 1 0;min-width:0;max-width:520px;height:48px;display:block}
 .chip{all:unset;cursor:pointer;font:700 13px/1 var(--f-main);color:var(--lilac);border:1.5px solid var(--line);border-radius:999px;padding:9px 13px;white-space:nowrap}
 .chip[aria-pressed="false"]{opacity:.55}
 .hud .chip{display:inline-flex;align-items:center;gap:6px}
@@ -113,6 +108,7 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:8;background:rgba(22,10,54,.72);padding:24px;
   -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .overlay[hidden]{display:none}
+.overlay{overflow-y:auto}.overlay>.card{margin:auto}
 .overlay.crash{z-index:20}
 #parents{z-index:9}
 .sub-title{font:800 clamp(26px,4vw,36px)/1.1 var(--f-main);margin:0;color:#fff}
@@ -146,7 +142,7 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .lv b{font:400 20px/1 var(--f-neon);color:var(--gold)}
 .lv[aria-pressed="true"]{border-color:var(--pink);color:#fff;box-shadow:0 0 22px rgba(255,79,179,.35)}
 .lv:disabled{opacity:.35;cursor:not-allowed}
-.trail{position:relative;width:min(640px,100%);height:240px}
+.trail{position:relative;width:min(640px,calc(100vw - 48px));height:240px}
 .trail canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .trail .lv{position:absolute;transform:translate(-50%,-22px);flex-direction:column;gap:3px;padding:0;border:0;width:84px;text-align:center;font:700 13px/1.15 var(--f-main)}
 .trail .lv b{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;border:3px solid var(--c);background:var(--night-2);font-size:19px}
@@ -171,13 +167,22 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 @keyframes wobble{20%{transform:translateX(calc(-50% - 10px))}40%{transform:translateX(calc(-50% + 8px))}60%{transform:translateX(calc(-50% - 5px))}80%{transform:translateX(calc(-50% + 3px))}}
 @keyframes blink{50%{opacity:.25;transform:scale(.7)}}
 body.calm *{animation:none!important;transition:none!important}
-@media (max-width:640px){.hud .level{display:none}.dot{width:10px;height:10px}.dots{gap:5px}}
+@media (max-width:640px){.hud .level{display:none}}
 @media (max-width:480px){
   .hud .chip span{display:none}
-  .hud{gap:8px;padding-left:12px;padding-right:12px}.hud .right{gap:6px}.chip{padding:7px 9px;font-size:12px}.dot{width:8px;height:8px}.dots{gap:4px}
+  .hud{gap:8px;padding-left:12px;padding-right:12px}.hud .right{gap:6px}.chip{padding:7px 9px;font-size:12px}
+  .hud{flex-wrap:wrap;row-gap:2px}.run{order:3;flex:1 0 100%;max-width:none;height:42px}.target{top:106px}
   .panel{padding:14px 16px;border-radius:20px}.panel .ask{font-size:18px}
   .built{min-height:46px;margin:4px 0 10px;gap:8px}.built .slot{width:52px;height:44px}
   .tray{gap:8px}.tray .word{font-size:17px;padding:7px 12px;min-width:50px;min-height:44px}.tile{min-width:50px;min-height:44px}
+}
+@media (max-height:860px){
+  .card{gap:12px}
+  .title{font-size:clamp(40px,min(10vw,9vh),118px)}
+  .stars{font-size:clamp(34px,7vh,84px)}
+  .gates span{min-width:44px;padding:5px 6px;font-size:21px}
+  .stats b{font-size:clamp(26px,5vh,48px)}
+  .trail{height:205px}
 }
 </style>
 </head>
@@ -186,7 +191,7 @@ body.calm *{animation:none!important;transition:none!important}
 
 <div class="hud">
   <div class="left"><span class="score" id="score">0</span><span class="combo" id="combo"></span></div>
-  <div class="dots" id="dots" aria-label="Poorten"></div>
+  <canvas class="run" id="run" aria-label="Poorten"></canvas>
   <div class="right"><span class="level" id="level"></span>
     <button class="chip" id="t-menu" type="button" aria-label="Niveaus"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg><span>Niveaus</span></button>
     <button class="chip" id="t-sound" type="button" aria-pressed="true" aria-label="Geluid"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg><span>Geluid</span></button>
@@ -272,7 +277,7 @@ const store = {
 store.player = store.get('player', '');
 const S = {
   phase: 'start', level: Math.min(store.get('level', 0), LEVELS.length - 1), unlocked: Math.min(store.get('unlocked', 0), LEVELS.length - 1),
-  T: START, P: START, disp: START, target: START, gate: 0, gates: GATES, again: [], score: 0, combo: 0, best: 0, firstTry: 0, coachEnd: 0, helped: false, marks: [],
+  T: START, P: START, disp: START, target: START, gate: 0, gates: GATES, again: [], score: 0, combo: 0, best: 0, firstTry: 0, coachEnd: 0, helped: false, marks: [], results: [],
   gateStart: 0, holdSince: 0, attempts: 0, sound: store.get('sound', true),
   calm: store.get('calm', matchMedia('(prefers-reduced-motion: reduce)').matches),
 };
@@ -522,7 +527,7 @@ function frame(now) {
   geometry(false);
   const frozenTime = now < stopUntil;
   if (!frozenTime) update(dt * (party ? party.slow : 1), now);
-  draw(now); drawTrail(now, dt);
+  draw(now); drawTrail(now, dt); drawRun(now, dt);
   requestAnimationFrame(frame);
 }
 
@@ -824,7 +829,8 @@ const snap = () => LEVELS[S.level].step;
 /* de getallen zijn de uren: tikken of de kleine wijzer slepen zet het uur; de grote wijzer of de rand draaien de minuten */
 const hourAt = e => mod(Math.round(minuteAt(e) / 5), 12) || 12;
 const grip = (e, k) => Math.max(R * k, e.pointerType === 'touch' ? 30 : 18);
-const onNumber = e => { const n = hourAt(e), [x, y] = at(n / 12 * Math.PI * 2, R * .74); return Math.hypot(e.clientX - x, e.clientY - y) < grip(e, .1) ? n : 0; };
+/* een getal is precies zijn rondje (met een vinger iets ruimer); daarbuiten is de rand voor de grote wijzer */
+const onNumber = e => { const n = hourAt(e), [x, y] = at(n / 12 * Math.PI * 2, R * .74); return Math.hypot(e.clientX - x, e.clientY - y) < Math.max(R * .1, e.pointerType === 'touch' ? 22 : 14) ? n : 0; };
 
 function zone(e) {
   const r = Math.hypot(e.clientX - CX, e.clientY - CY), near = ([x, y]) => Math.hypot(e.clientX - x, e.clientY - y) < grip(e, .16);
@@ -832,6 +838,8 @@ function zone(e) {
   if (r > R * .86) return {kind: 'ring'};
   if (near(at(mod(S.T, 60) / 60 * Math.PI * 2, R * .8))) return {kind: 'hand', n: onNumber(e)};
   if (near(at(mod(S.T / 60, 12) / 12 * Math.PI * 2, R * .5))) return {kind: 'small'};
+  if (onNumber(e)) return {kind: 'hour', n: onNumber(e)};
+  if (r > R * .76) return {kind: 'ring'};
   if (r > R * .58) return {kind: 'hour', n: hourAt(e)};
   return {kind: 'hand'};
 }
@@ -959,8 +967,7 @@ function renderHud() {
   $('#score').textContent = S.score;
   $('#combo').textContent = S.combo > 1 ? `×${Math.min(S.combo, 5)}` : '';
   $('#level').textContent = LEVELS[S.level].name;
-  $('#dots').innerHTML = Array.from({length: S.gates}, (_, i) =>
-    `<span class="dot${FROZEN.has(i) ? ' frozen' : ''}${BUILD.has(i) ? ' build' : ''}${i < S.gate ? ' done' : ''}${i === S.gate && S.phase !== 'end' ? ' now' : ''}"></span>`).join('');
+  $('#run').setAttribute('aria-label', `Poort ${Math.min(S.gate + 1, S.gates)} van ${S.gates}`);
 }
 function popCombo() { const c = $('#combo'); c.classList.remove('pop'); void c.offsetWidth; c.classList.add('pop'); }
 
@@ -988,7 +995,7 @@ function again() {
 
 function startRun() {
   const start = Math.floor(Math.random() * 24) * 60;
-  Object.assign(S, {phase: 'skate', T: start, P: start, disp: start, gate: 0, gates: GATES, again: [], score: 0, combo: 0, best: 0, firstTry: 0, usedHour: false, helped: false, marks: []});
+  Object.assign(S, {phase: 'skate', T: start, P: start, disp: start, gate: 0, gates: GATES, again: [], score: 0, combo: 0, best: 0, firstTry: 0, usedHour: false, helped: false, marks: [], results: []}); lap.u = 0;
   scratchC.getContext('2d').clearRect(0, 0, 2 * RB + 40, 2 * RB + 40);
   $('#start').hidden = true; $('#end').hidden = true;
   nextGate();
@@ -1288,6 +1295,59 @@ function renderLevels(sel) {
   $('#again').textContent = S.level === S.played ? 'Nog een rondje' : `Naar ${LEVELS[S.level].name}!`;
 }
 
+/* ---------- de volglijn bovenin: de hele reis over alle niveaus, met het niveau van nu uitgerekt. Elke poort is een paaltje
+   (ruit: schrijven, blokje: bouwen) en de schaatser schaatst na elke poort door. Een gehaald stuk is goud in één keer, lila
+   met meer pogingen en roze als het samen ging; de andere niveaus hebben de kleur van hun sterren, en aan het eind de beker ---------- */
+const LAP = {first: '#FFD34E', later: '#B48CFF', samen: '#FF4FB3'}, WIDE = 5;
+const lap = {u: 0, speed: 0, phase: 0};
+
+function drawRun(now, dt) {
+  const c = $('#run'), w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== Math.round(w * DPR) || c.height !== Math.round(h * DPR)) { c.width = Math.round(w * DPR); c.height = Math.round(h * DPR); }
+  const main = ctx; ctx = c.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, w, h);
+  const n = S.gates, cur = S.level, pad = 7, cup = 18, y = h - 9, unit = (w - pad - cup - 6) / (LEVELS.length - 1 + WIDE);
+  const node = i => pad + unit * (i + (i > cur ? WIDE - 1 : 0)), x = i => node(cur) + (i + 1) * unit * WIDE / (n + 1);
+  const stars = LEVELS.map((l, i) => best(i)), end = node(LEVELS.length);
+  ctx.lineCap = 'round';
+  const line = (a, b, color, width, glow) => {
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.shadowColor = color; ctx.shadowBlur = glow ? 8 : 0;
+    ctx.beginPath(); ctx.moveTo(a, y); ctx.lineTo(b, y); ctx.stroke(); ctx.shadowBlur = 0;
+  };
+  LEVELS.forEach((l, i) => { if (i !== cur) line(node(i), node(i + 1), i > S.unlocked ? LOCKED : TRAIL[stars[i]], 3, stars[i] === 3); });
+  line(node(cur), x(0), 'rgba(205,187,255,.5)', 3, false);
+  for (let i = 0; i < n; i++) {
+    const done = S.results[i];
+    line(x(i), i + 1 < n ? x(i + 1) : node(cur + 1), done ? LAP[done] : 'rgba(205,187,255,.22)', done ? 4 : 3, done === 'first');
+  }
+  for (let i = 0; i < LEVELS.length; i++) {
+    const color = i > S.unlocked ? LOCKED : TRAIL[stars[i]];
+    ctx.fillStyle = i === cur ? '#FF4FB3' : color; ctx.beginPath(); ctx.arc(node(i), y, i === cur ? 4 : 3.2, 0, Math.PI * 2); ctx.fill();
+  }
+  for (let i = 0; i < n; i++) {
+    const done = S.results[i], here = i === S.gate && S.phase !== 'end' && S.phase !== 'start';
+    const r = Math.min(4.5, (x(1) - x(0)) * .26) * (here ? 1.15 + .1 * Math.sin(now / 200) : 1);
+    ctx.save(); ctx.translate(x(i), y);
+    ctx.fillStyle = done ? LAP[done] : '#1F0F4D'; ctx.strokeStyle = here ? '#FF4FB3' : done ? LAP[done] : 'rgba(205,187,255,.5)'; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    if (FROZEN.has(i)) { ctx.moveTo(0, -r - 1); ctx.lineTo(r + 1, 0); ctx.lineTo(0, r + 1); ctx.lineTo(-r - 1, 0); ctx.closePath(); }
+    else if (BUILD.has(i)) ctx.rect(-r, -r, 2 * r, 2 * r);
+    else ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke(); ctx.restore();
+  }
+  const gold = stars.every(k => k === 3);
+  ctx.save(); ctx.translate(end + cup / 2 + 2, y + 3); ctx.scale(.5, .5);
+  ctx.fillStyle = gold ? '#FFD34E' : 'rgba(205,187,255,.12)'; ctx.strokeStyle = gold ? '#FFF3C4' : 'rgba(205,187,255,.55)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-15, -40); ctx.lineTo(15, -40); ctx.quadraticCurveTo(15, -18, 3, -15); ctx.lineTo(3, -8); ctx.lineTo(10, -4);
+  ctx.lineTo(10, 0); ctx.lineTo(-10, 0); ctx.lineTo(-10, -4); ctx.lineTo(-3, -8); ctx.lineTo(-3, -15); ctx.quadraticCurveTo(-15, -18, -15, -40); ctx.closePath();
+  ctx.fill(); ctx.stroke(); ctx.restore();
+  const goal = Math.min(S.gate, n), left = goal - lap.u, step = Math.sign(left) * Math.min(Math.abs(left), dt * .0022 * Math.min(1, .25 + Math.abs(left) / .3));
+  lap.u += step;
+  const gap = unit * WIDE / (n + 1);
+  lap.speed = lap.speed * .85 + Math.abs(step) * gap / dt * 2.2 * .15; lap.phase += dt * .004 + Math.abs(step) * gap * .25;
+  skater(node(cur) + (lap.u + 1) * gap, y - 7, h / 75, '#FF4FB3', '#FFD34E', lap.phase, .3 + Math.min(3, lap.speed), 1);
+  ctx = main;
+}
+
 function drawTrail(now, dt) {
   const box = !$('#end').hidden ? $('#levels-end') : !$('#start').hidden ? $('#levels') : null;
   if (!box) return;
@@ -1389,6 +1449,7 @@ function write(note = '', example = null) {
     panel.querySelector('.ask').textContent = 'Schrijf eerst de tijd.'; SFX.soft();
   });
   /* op een tablet is de tik naast het toetsenbord om de klok weer te zien geen Samen doen: die tik sluit alleen het toetsenbord */
+  input.addEventListener('blur', () => scrollTo(0, 0));
   let closing = false;
   $('#samen-write').addEventListener('pointerdown', e => { closing = e.pointerType !== 'mouse' && document.activeElement === input; });
   $('#samen-write').addEventListener('click', () => { if (closing) { closing = false; return input.blur(); } together(); });
@@ -1534,6 +1595,7 @@ const shown = t => LEVELS[S.level].digital ? hhmm(t) : said(t);
 function slip(mistake, how, what) { S.slips.push(mistake); S.example = S.example || {mistake, how, what}; }
 
 function logGate(kind, first) {
+  S.results[S.gate] = S.together ? 'samen' : first ? 'first' : 'later';
   if (S.together) S.helped = true;
   if (kind !== 'skate') S.marks.push({kind, first, together: S.together});
   const log = store.get('log', []);
@@ -1612,6 +1674,11 @@ function pick(name) {
   renderPlayers(); renderLevels('#levels'); renderHud();
 }
 $('#reload').addEventListener('click', () => location.reload());
+/* een tik ergens naast het invulvak sluit het toetsenbord, zodat de klok weer helemaal in beeld is */
+document.addEventListener('pointerdown', e => {
+  const input = $('#answer');
+  if (input && document.activeElement === input && !e.target.closest('#form')) input.blur();
+});
 $('#live').addEventListener('click', e => { if (e.target.closest('#samen')) { audio(); startTogether(performance.now()); } });
 
 /* ---------- start ---------- */

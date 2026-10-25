@@ -279,6 +279,21 @@ def test_closing_the_keyboard_on_a_tablet_is_no_samen(playwright: Playwright, ur
     browser.close()
 
 
+def test_a_tap_beside_the_answer_closes_the_keyboard(playwright: Playwright, url: str) -> None:
+    browser = playwright.webkit.launch()
+    page, errors = open_game(browser, url, **playwright.devices["iPad (gen 7)"])
+    page.evaluate("S.level = 2; S.unlocked = 2")
+    page.click("#go")
+    page.wait_for_function("S.phase === 'skate'")
+    page.evaluate("S.gate = 4; nextGate()")
+    page.wait_for_selector("#answer")
+    page.fill("#answer", "half")
+    page.touchscreen.tap(*point(page, 0, 0))
+    assert page.evaluate("[document.activeElement.id, $('#answer').value, S.together]") == ["", "half", False]
+    assert errors == []
+    browser.close()
+
+
 def test_a_crash_is_shown(chromium: Browser, url: str) -> None:
     page, errors = open_game(chromium, url)
     page.evaluate("setTimeout(() => { throw new Error('kapot') })")
@@ -514,4 +529,31 @@ def test_tapping_the_rim_skates_the_big_hand_there(chromium: Browser, url: str) 
         page.mouse.move(*point(page, m / 60 * 2 * math.pi, 0.93))
     page.mouse.up()
     assert page.evaluate("S.T") == 4 * 60
+    assert errors == []
+
+
+def test_the_round_trail_follows_the_gates(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 2)
+    skate(page)
+    page.wait_for_function("S.gate === 1")
+    page.wait_for_function("lap.u === 1")
+    assert page.evaluate("S.results") == ["first"]
+    assert page.get_attribute("#run", "aria-label") == "Poort 2 van 10"
+    assert errors == []
+
+
+def test_a_tap_just_off_a_number_is_the_rim(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 2)
+
+    def kind(minute: int, radius: float) -> list[Any]:
+        x, y = point(page, minute / 60 * 2 * math.pi, radius)
+        return list(page.evaluate(f"(z => [z.kind, z.n])(zone({{clientX: {x}, clientY: {y}, pointerType: 'touch'}}))"))
+
+    page.evaluate("S.T = 7 * 60; S.P = S.T; S.disp = S.T")
+    assert kind(15, 0.74) == ["hour", 3]
+    assert kind(17, 0.8) == ["ring", None]
+    assert kind(45, 0.83)[0] == "hour"
+    assert kind(43, 0.88) == ["ring", None]
     assert errors == []
