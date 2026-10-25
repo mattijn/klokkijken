@@ -9,7 +9,7 @@ uv run python server.py
 
 Open daarna http://localhost:8740.
 
-Het spel heeft [fm-pydantic-ai](https://github.com/mattijn/fm-pydantic-ai) nodig in `../fm-pydantic-ai`.
+Het model loopt via [fm-pydantic-ai](https://github.com/mattijn/fm-pydantic-ai), dat `uv sync` van GitHub haalt.
 
 ```bash
 uv run --group dev ruff check . && uv run --group dev ruff format --check . && uv run --group dev mypy && uv run --group dev pytest

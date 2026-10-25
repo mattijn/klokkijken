@@ -32,34 +32,10 @@ wheels = [
 [[package]]
 name = "apple-fm-sdk"
 version = "0.2.1"
-source = { editable = "../fm-pydantic-ai/vendor/apple_fm_sdk-0.2.1" }
+source = { git = "https://github.com/mattijn/fm-pydantic-ai?subdirectory=vendor%2Fapple_fm_sdk-0.2.1&rev=39b0586#39b0586035887a433f6bc3ab99a55ccf55ca9072" }
 dependencies = [
     { name = "build" },
     { name = "setuptools" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "build" },
-    { name = "setuptools", specifier = ">=75.3.2" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "ctypesgen", specifier = ">=1.1.1" },
-    { name = "psutil", specifier = ">=7.2.2" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-timeout" },
-    { name = "ruff", specifier = ">=0.14.5" },
-    { name = "twine", specifier = ">=6.2.0" },
-]
-docs = [
-    { name = "myst-parser", specifier = ">=2.0.0" },
-    { name = "sphinx", specifier = ">=7.0.0" },
-    { name = "sphinx-autodoc-typehints", specifier = ">=1.25.0" },
-    { name = "sphinx-book-theme", specifier = ">=1.0.0" },
-    { name = "sphinx-copybutton", specifier = ">=0.5.2" },
 ]
 
 [[package]]
@@ -327,35 +303,12 @@ wheels = [
 [[package]]
 name = "fm-pydantic-ai"
 version = "0.1.0"
-source = { editable = "../fm-pydantic-ai" }
+source = { git = "https://github.com/mattijn/fm-pydantic-ai?rev=39b0586#39b0586035887a433f6bc3ab99a55ccf55ca9072" }
 dependencies = [
     { name = "apple-fm-sdk" },
     { name = "mcp" },
     { name = "opentelemetry-api" },
     { name = "pydantic-ai-slim" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "apple-fm-sdk", editable = "../fm-pydantic-ai/vendor/apple_fm_sdk-0.2.1" },
-    { name = "mcp", specifier = ">=2.3.0" },
-    { name = "opentelemetry-api", specifier = ">=1.45.1" },
-    { name = "pydantic-ai-slim", specifier = ">=2.59.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-docs = [
-    { name = "markdown-exec", specifier = ">=1.12.5" },
-    { name = "zensical", specifier = ">=0.0.72" },
-]
-evals = [
-    { name = "opentelemetry-sdk", specifier = ">=1.45.1" },
-    { name = "pydantic-evals", specifier = "==2.59.0" },
 ]
 
 [[package]]
@@ -523,8 +476,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "apple-fm-sdk", editable = "../fm-pydantic-ai/vendor/apple_fm_sdk-0.2.1" },
-    { name = "fm-pydantic-ai", editable = "../fm-pydantic-ai" },
+    { name = "apple-fm-sdk", git = "https://github.com/mattijn/fm-pydantic-ai?subdirectory=vendor%2Fapple_fm_sdk-0.2.1&rev=39b0586" },
+    { name = "fm-pydantic-ai", git = "https://github.com/mattijn/fm-pydantic-ai?rev=39b0586" },
     { name = "pydantic-ai-slim", specifier = ">=2.59.0" },
     { name = "starlette", specifier = ">=1.10.0" },
     { name = "uvicorn", specifier = ">=0.54.0" },

@@ -22,8 +22,8 @@ dev = [
 package = false
 
 [tool.uv.sources]
-apple-fm-sdk = { path = "../fm-pydantic-ai/vendor/apple_fm_sdk-0.2.1", editable = true }
-fm-pydantic-ai = { path = "../fm-pydantic-ai", editable = true }
+apple-fm-sdk = { git = "https://github.com/mattijn/fm-pydantic-ai", rev = "39b0586", subdirectory = "vendor/apple_fm_sdk-0.2.1" }
+fm-pydantic-ai = { git = "https://github.com/mattijn/fm-pydantic-ai", rev = "39b0586" }
 
 [tool.ruff]
 line-length = 120
