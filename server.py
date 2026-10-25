@@ -1,4 +1,4 @@
-"""The IJsbaan-klok: the game, every phrase on the clock face, and the dialogue at a frozen gate.
+"""The IJsbaan-klok: the game, every phrase on the clock face, the dialogue at a frozen gate, and building sentences.
 
 The dialogue is stateless, like an MCP elicitation on the 2026-07-28 protocol: each question goes to the client with
 the dialogue so far, and the answer comes back with it.
@@ -15,7 +15,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
 import tutor
-from klok import Reading, Step, judge, parse, readings, sentence, steps, words
+from klok import Reading, Step, judge, parse, place, readings, sentence, steps, tray, words
 
 __all__ = ["app"]
 
@@ -24,9 +24,17 @@ PAGE = Path(__file__).parent / "static" / "index.html"
 PHRASES = [words(readings(i // 60, i % 60)[0]) for i in range(720)]
 
 
-class Answer(BaseModel):
+class Clock(BaseModel):
     hour: int
     minute: int
+
+
+class Placing(Clock):
+    placed: list[str]
+    word: str
+
+
+class Answer(Clock):
     text: str
 
 
@@ -97,8 +105,22 @@ async def answer_step(request: Request) -> JSONResponse:
         return JSONResponse({"correct": False, "hint": step.hint})
     dialogue = dialogue.model_copy(update={"index": dialogue.index + 1})
     if dialogue.index == len(dialogue.steps):
-        return JSONResponse({"correct": True, "done": True})
+        return JSONResponse(
+            {"correct": True, "done": True, "right": words(readings(dialogue.hour, dialogue.minute)[0])}
+        )
     return JSONResponse({"correct": True, "done": False} | await question(dialogue))
+
+
+async def build(request: Request) -> JSONResponse:
+    """The blocks to build the time's sentence from."""
+    clock = Clock.model_validate(await request.json())
+    return JSONResponse({"tray": tray(clock.hour, clock.minute)})
+
+
+async def place_word(request: Request) -> JSONResponse:
+    """Whether the block fits next, with its role to colour it, or a hint about the rule it breaks."""
+    placing = Placing.model_validate(await request.json())
+    return JSONResponse(place(placing.hour, placing.minute, placing.placed, placing.word).model_dump())
 
 
 app = Starlette(
@@ -108,6 +130,8 @@ app = Starlette(
         Route("/read", read, methods=["POST"]),
         Route("/ask", ask, methods=["POST"]),
         Route("/step", answer_step, methods=["POST"]),
+        Route("/build", build, methods=["POST"]),
+        Route("/place", place_word, methods=["POST"]),
     ]
 )
 

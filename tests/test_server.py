@@ -37,8 +37,29 @@ def test_dialogue_for_twenty_past_nine() -> None:
         "correct": False,
         "hint": "De wijzers draaien rechtsom. Is het hele uur al geweest, of komt hij nog?",
     }
-    assert post("/step", {"dialogue": first["dialogue"], "choice": "er nog naartoe"}) == {"correct": True, "done": True}
+    done = post("/step", {"dialogue": first["dialogue"], "choice": "er nog naartoe"})
+    assert done["done"]
+    assert [w for w, role in done["right"]] == ["tien", "over", "half", "negen"]
 
 
 def test_words_that_are_no_time() -> None:
     assert post("/read", {"hour": 20, "minute": 40, "text": "ik weet het niet"})["verdict"] == "unreadable"
+
+
+def test_building_four_to_nine() -> None:
+    clock = {"hour": 20, "minute": 56}
+    assert post("/build", clock)["tray"] == ["acht", "negen", "over", "vier", "voor", "zesenvijftig"]
+    assert (
+        post("/place", clock | {"placed": [], "word": "negen"})["hint"]
+        == "Het uur komt achteraan. Begin met de minuten."
+    )
+    assert post("/place", clock | {"placed": ["vier", "voor"], "word": "acht"}) == {
+        "role": None,
+        "hint": "Bij voor en half noem je het uur dat nog komt.",
+        "done": False,
+    }
+    assert post("/place", clock | {"placed": ["vier", "voor"], "word": "negen"}) == {
+        "role": "hour",
+        "hint": None,
+        "done": True,
+    }

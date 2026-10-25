@@ -11,6 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 __all__ = [
+    "Fit",
     "Mistake",
     "Reading",
     "Step",
@@ -20,9 +21,11 @@ __all__ = [
     "mistakes",
     "number_word",
     "parse",
+    "place",
     "readings",
     "sentence",
     "steps",
+    "tray",
     "twelve",
     "words",
 ]
@@ -32,7 +35,7 @@ UNIT_WORDS = (UNITS + " achttien negentien").split()
 TENS = {2: "twintig", 3: "dertig", 4: "veertig", 5: "vijftig"}
 
 Direction = Literal["over", "voor", "none"]
-Mistake = Literal["24h", "anchor", "direction", "number", "hour"]
+Mistake = Literal["24h", "order", "anchor", "direction", "number", "hour"]
 Verdict = Literal["right", "other_words", "wrong"]
 
 FIELDS: list[tuple[Mistake, str]] = [
@@ -60,6 +63,14 @@ class Step(BaseModel):
     options: list[str]
     answer: str
     hint: str
+
+
+class Fit(BaseModel):
+    """How a block fits next in the sentence: its role when it does, a hint about the broken rule when it doesn't."""
+
+    role: str | None
+    hint: str | None
+    done: bool
 
 
 def twelve(hour: int) -> int:
@@ -130,8 +141,10 @@ NUMBERS: dict[str, int] = {plain(number_word(n)): n for n in range(1, 60)} | {"k
 def parse(text: str) -> Reading | None:
     """The time in correctly spelled Dutch words, or None when the words don't form a time."""
     tokens = [NUMBERS.get(t, t) for t in re.findall(r"[a-z]+", plain(text))]
+    if tokens[-1:] == ["uur"]:
+        tokens.pop()
     match tokens:
-        case [int(hour)] | [int(hour), "uur"] if hour <= 24:
+        case [int(hour)] if hour <= 24:
             return Reading(number=0, direction="none", half=False, hour=hour)
         case ["half", int(hour)] if hour <= 24:
             return Reading(number=0, direction="none", half=True, hour=hour)
@@ -161,11 +174,23 @@ def differences(said: Reading, form: Reading) -> list[Mistake]:
     return [mistake for mistake, field in FIELDS if getattr(said, field) != getattr(form, field)]
 
 
+def swapped(reading: Reading) -> Reading | None:
+    """The reading with its number and hour traded places, when both fit the other's spot."""
+    if reading.direction == "none" or not 1 <= reading.number <= 12:
+        return None
+    return reading.model_copy(update={"number": reading.hour, "hour": reading.number})
+
+
 def mistakes(hour: int, minute: int, reading: Reading) -> tuple[list[Mistake], Reading]:
-    """What differs from the nearest right way to say the time, and that way."""
+    """What differs from the nearest right way to say the time, and that way; hour and number swapped is one mistake."""
     said = reading.model_copy(update={"hour": twelve(reading.hour)})
-    form = min(readings(hour, minute), key=partial(distance, said))
-    found = differences(said, form)
+    right = readings(hour, minute)
+    swap = swapped(said)
+    order: list[Mistake] = []
+    if swap is not None and nearest(right, swap) < nearest(right, said):
+        said, order = swap, ["order"]
+    form = min(right, key=partial(distance, said))
+    found = order + differences(said, form)
     if form.direction == "none":  # on the hour or the half, minutes come down to one question: exactly there?
         direction: Mistake = "direction"
         found = list(dict.fromkeys(direction if m == "number" else m for m in found))
@@ -177,8 +202,12 @@ def distance(said: Reading, form: Reading) -> int:
     return len(differences(said, form))
 
 
+def nearest(forms: list[Reading], said: Reading) -> int:
+    return min(distance(said, form) for form in forms)
+
+
 def steps(hour: int, minute: int, reading: Reading) -> list[Step]:
-    """One question per mistake, in the order a child builds the sentence: anchor, direction, number, hour."""
+    """One question per mistake, in the order a child builds the sentence: order, anchor, direction, number, hour."""
     found, form = mistakes(hour, minute, reading)
     now, next_ = twelve(hour), twelve(hour + 1)
     anchor = "de half" if form.half else "het hele uur"
@@ -194,6 +223,16 @@ def steps(hour: int, minute: int, reading: Reading) -> list[Step]:
                         options=[str(o) for o in options],
                         answer=str(twelve(reading.hour)),
                         hint=f"Tel verder na de 12: 13 is 1, 14 is 2, en zo door tot {reading.hour}.",
+                    )
+                )
+            case "order":
+                out.append(
+                    Step(
+                        mistake=mistake,
+                        ask="Wat zeg je eerst: de minuten of het uur?",
+                        options=["de minuten", "het uur"],
+                        answer="de minuten",
+                        hint="Het uur komt altijd achteraan, zoals in: tien over twee.",
                     )
                 )
             case "anchor":
@@ -243,20 +282,78 @@ def steps(hour: int, minute: int, reading: Reading) -> list[Step]:
                 out.append(
                     Step(
                         mistake=mistake,
-                        ask="Naar welk uur schaatst de kleine schaatser?",
+                        ask="Bij voor en half noem je het uur dat nog komt. Welk uur komt eraan?",
                         options=[str(now), str(next_)],
                         answer=str(next_),
-                        hint="Kijk welk getal de kleine schaatser nog moet halen.",
+                        hint="Je gaat nog naar dat uur toe. Welk getal moet de kleine schaatser nog halen?",
                     )
                 )
             case "hour":
                 out.append(
                     Step(
                         mistake=mistake,
-                        ask="Welk uur is net geweest?",
+                        ask="Bij over noem je het uur dat net geweest is. Welk uur is dat?",
                         options=[str(now), str(next_)],
                         answer=str(now),
                         hint="Kijk welk getal de kleine schaatser net voorbij is.",
                     )
                 )
     return out
+
+
+def tray(hour: int, minute: int) -> list[str]:
+    """The blocks to build the sentence from: its words and the words a child mixes them up with."""
+    reading = readings(hour, minute)[0]
+    right = [word for word, role in words(reading)]
+    other_hour = twelve(hour + 1) if reading.hour == twelve(hour) else twelve(hour)
+    tempting = [number_word(other_hour)]
+    if reading.direction != "none":
+        tempting.append({"over": "voor", "voor": "over"}[reading.direction])
+    if minute and reading.number != minute:
+        tempting.append(number_word(minute))
+    if reading.direction == "none":
+        tempting.append("uur" if reading.half else "half")
+    return sorted(right + [word for word in tempting if word not in right])
+
+
+def place(hour: int, minute: int, placed: list[str], word: str) -> Fit:
+    """Whether `word` fits after the placed words in a right way to say the time."""
+    n = len(placed)
+    fitting = [r for r in readings(hour, minute) if [w for w, role in words(r)][:n] == placed and len(words(r)) > n]
+    if not fitting:
+        raise ValueError(f"{placed} starts no way to say {hour}:{minute:02}")
+    for reading in fitting:
+        next_word, role = words(reading)[n]
+        if next_word == word:
+            return Fit(role=role, hint=None, done=len(words(reading)) == n + 1)
+    return Fit(role=None, hint=clue(hour, minute, fitting[0], words(fitting[0])[n], word), done=False)
+
+
+def clue(hour: int, minute: int, reading: Reading, expected: tuple[str, str], word: str) -> str:
+    """Why `word` doesn't come next in `reading`, where `expected` does."""
+    hours = {number_word(twelve(hour)), number_word(twelve(hour + 1))}
+    anchor = "de half" if reading.half else "het hele uur"
+    match expected:
+        case (_, "number") if word in hours:
+            return "Het uur komt achteraan. Begin met de minuten."
+        case (_, "number") if minute and word == number_word(minute) and reading.direction == "voor":
+            return f"Niet {minute}: tel hoeveel minuten het nog duurt tot {anchor}."
+        case (_, "number") if minute and word == number_word(minute):
+            return f"Niet {minute}: tel hoeveel minuten het al na {anchor} is."
+        case (_, "number"):
+            return f"Begin met hoeveel minuten het is tot {anchor} of erna."
+        case (_, "to-hour" | "to-half") if word in ("over", "voor"):
+            return f"Is {anchor} al geweest? Dan zeg je over. Komt hij nog? Dan zeg je voor."
+        case (_, "to-hour" | "to-half"):
+            return "Na de minuten komt over of voor."
+        case (_, "half"):
+            return "Je telt vanaf de half, dus nu komt het woord half."
+        case ("uur", "hour"):
+            return "Bij een heel uur zeg je er uur achter."
+        case (_, "hour") if word in hours and (reading.half or reading.direction == "voor"):
+            return "Bij voor en half noem je het uur dat nog komt."
+        case (_, "hour") if word in hours:
+            return "Bij over noem je het uur dat net geweest is."
+        case (_, "hour"):
+            return "Nu komt het uur."
+    raise ValueError(f"No clue for {expected}")

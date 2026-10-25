@@ -1,6 +1,6 @@
 import pytest
 
-from klok import Reading, judge, minutes, mistakes, number_word, parse, readings, sentence, steps
+from klok import Reading, judge, minutes, mistakes, number_word, parse, place, readings, sentence, steps, tray, words
 
 
 def said(text: str) -> Reading:
@@ -50,6 +50,10 @@ def test_words_that_are_no_time(text: str) -> None:
     assert parse(text) is None
 
 
+def test_uur_after_a_time_is_allowed() -> None:
+    assert parse("vier voor negen uur") == parse("vier voor negen")
+
+
 @pytest.mark.parametrize(
     ("text", "verdict", "found"),
     [
@@ -88,3 +92,32 @@ def test_step_for_twenty_past_nine() -> None:
     [step] = steps(20, 40, said("twintig over negen"))
     assert step.answer == "er nog naartoe"
     assert "het hele uur" in step.ask
+
+
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [("acht voor vier", ["order", "hour"]), ("vier voor acht", ["hour"]), ("negen voor vier", ["order"])],
+)
+def test_four_to_nine(text: str, found: list[str]) -> None:
+    assert mistakes(20, 56, said(text))[0] == found
+
+
+def test_the_hour_question_names_the_rule() -> None:
+    [step] = steps(20, 56, said("vier voor acht"))
+    assert step.ask.startswith("Bij voor en half noem je het uur dat nog komt.")
+    assert step.answer == "9"
+
+
+def test_every_sentence_builds_from_its_tray() -> None:
+    for t in range(720):
+        hour, minute = t // 60, t % 60
+        blocks = tray(hour, minute)
+        right = [word for word, role in words(readings(hour, minute)[0])]
+        for n, word in enumerate(right):
+            for block in set(blocks) - {word}:
+                fits = any([w for w, role in words(r)][: n + 1] == right[:n] + [block] for r in readings(hour, minute))
+                assert (place(hour, minute, right[:n], block).hint is None) == fits
+            fit = place(hour, minute, right[:n], word)
+            assert (fit.hint, fit.done) == (None, n + 1 == len(right))
+            blocks.remove(word)
+        assert blocks

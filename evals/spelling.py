@@ -43,6 +43,11 @@ CASES = [
     ("ses voor haf elf", "zes voor half elf"),
     ("negn over haf tie", "negen over half tien"),
     ("kwart foor drie", "kwart voor drie"),
+    ("4voor8", "vier voor acht"),
+    ("4vor8", "vier voor acht"),
+    ("acht voor vier", "acht voor vier"),
+    ("vier voor 8 uur", "vier voor acht"),
+    ("10ovr haf 3", "tien over half drie"),
 ]
 
 
