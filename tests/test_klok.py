@@ -1,0 +1,90 @@
+import pytest
+
+from klok import Reading, judge, minutes, mistakes, number_word, parse, readings, sentence, steps
+
+
+def said(text: str) -> Reading:
+    reading = parse(text)
+    assert reading is not None
+    return reading
+
+
+@pytest.mark.parametrize(
+    ("n", "word"), [(1, "één"), (13, "dertien"), (21, "eenentwintig"), (22, "tweeëntwintig"), (37, "zevenendertig")]
+)
+def test_number_words(n: int, word: str) -> None:
+    assert number_word(n) == word
+
+
+@pytest.mark.parametrize(
+    ("hour", "minute", "spoken"),
+    [
+        (20, 0, ["acht uur"]),
+        (20, 15, ["kwart over acht"]),
+        (20, 20, ["tien voor half negen", "twintig over acht"]),
+        (20, 30, ["half negen"]),
+        (20, 37, ["zeven over half negen"]),
+        (20, 40, ["tien over half negen", "twintig voor negen"]),
+        (20, 45, ["kwart voor negen"]),
+        (0, 30, ["half één"]),
+        (23, 55, ["vijf voor twaalf"]),
+    ],
+)
+def test_readings(hour: int, minute: int, spoken: list[str]) -> None:
+    assert [sentence(r) for r in readings(hour, minute)] == spoken
+
+
+def test_every_reading_names_its_own_time() -> None:
+    for t in range(720):
+        assert {minutes(r) for r in readings(t // 60, t % 60)} == {t}
+
+
+def test_every_sentence_parses_back() -> None:
+    for t in range(720):
+        for reading in readings(t // 60, t % 60):
+            assert parse(sentence(reading)) == reading
+
+
+@pytest.mark.parametrize("text", ["over half negen", "zeventig over acht", "zes uur over half acht", ""])
+def test_words_that_are_no_time(text: str) -> None:
+    assert parse(text) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "verdict", "found"),
+    [
+        ("tien over half negen", "right", []),
+        ("Twintig voor negen", "right", []),
+        ("veertig over acht", "other_words", []),
+        ("twintig over negen", "wrong", ["direction"]),
+        ("tien over half acht", "wrong", ["hour"]),
+        ("tien voor half negen", "wrong", ["direction"]),
+        ("tien over half eenentwintig", "wrong", ["24h"]),
+        ("tien over negen", "wrong", ["anchor"]),
+        ("zeven over negen", "wrong", ["anchor", "number"]),
+    ],
+)
+def test_twenty_to_nine(text: str, verdict: str, found: list[str]) -> None:
+    assert judge(20, 40, said(text)) == verdict
+    if verdict == "wrong":
+        assert mistakes(20, 40, said(text))[0] == found
+
+
+def test_minutes_on_the_hour_or_half_are_one_question() -> None:
+    assert mistakes(21, 0, said("vijf over negen"))[0] == ["direction"]
+    assert mistakes(20, 30, said("tien over half negen"))[0] == ["direction"]
+
+
+def test_steps_lead_to_their_answers() -> None:
+    texts = ["twintig over negen", "half acht", "kwart voor twaalf", "zeven over half negen", "acht over half twintig"]
+    for t in range(0, 720, 7):
+        for text in texts:
+            for step in steps(t // 60, t % 60, said(text)):
+                assert step.answer in step.options
+                assert len(set(step.options)) == len(step.options) >= 2
+
+
+def test_step_for_twenty_past_nine() -> None:
+    [step] = steps(20, 40, said("twintig over negen"))
+    assert step.answer == "er nog naartoe"
+    assert "het hele uur" in step.ask

@@ -1,0 +1,41 @@
+[project]
+name = "klokkijken"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "apple-fm-sdk",
+    "fm-pydantic-ai",
+    "pydantic-ai-slim>=2.59.0",
+    "starlette>=1.10.0",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx",
+    "mypy",
+    "pytest",
+    "ruff",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+apple-fm-sdk = { path = "../fm-pydantic-ai/vendor/apple_fm_sdk-0.2.1", editable = true }
+fm-pydantic-ai = { path = "../fm-pydantic-ai", editable = true }
+
+[tool.ruff]
+line-length = 120
+
+[tool.mypy]
+files = ["klok.py", "tutor.py", "server.py", "tests", "evals"]
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["apple_fm_sdk.*", "apple_fm_model"]
+follow_untyped_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
