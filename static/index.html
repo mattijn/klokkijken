@@ -146,6 +146,20 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .lv b{font:400 20px/1 var(--f-neon);color:var(--gold)}
 .lv[aria-pressed="true"]{border-color:var(--pink);color:#fff;box-shadow:0 0 22px rgba(255,79,179,.35)}
 .lv:disabled{opacity:.35;cursor:not-allowed}
+.trail{position:relative;width:min(640px,100%);height:200px}
+.trail canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.trail .lv{position:absolute;transform:translate(-50%,-22px);flex-direction:column;gap:3px;padding:0;border:0;width:84px;text-align:center;font:700 13px/1.15 var(--f-main)}
+.trail .lv b{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;border:3px solid var(--c);background:var(--night-2);font-size:19px}
+.trail .lv[aria-pressed="true"]{box-shadow:none}.trail .lv[aria-pressed="true"] b{border-color:var(--pink);box-shadow:0 0 18px rgba(255,79,179,.6)}
+.trail .lv i{font-style:normal;color:var(--gold);letter-spacing:.08em}.trail .lv i em{font-style:normal;color:rgba(205,187,255,.25)}
+.trail .cup{all:unset;position:absolute;transform:translate(-50%,-80%);width:52px;height:56px;cursor:pointer}.trail .cup:disabled{cursor:default}
+.rule{font-size:14px!important;color:var(--mute)!important}
+.gates{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.gates span{display:grid;place-items:center;gap:2px;min-width:52px;padding:8px 6px;border-radius:14px;border:2.5px solid var(--line);font:800 26px/1 var(--f-main)}
+.gates .yes{color:var(--cyan);border-color:rgba(62,232,255,.5)}.gates .no{color:var(--pink);border-color:rgba(255,79,179,.5)}
+.gates small{font:700 12px/1 var(--f-main);color:var(--lilac)}
+#goal{font:800 clamp(18px,2.4vw,22px)/1.3 var(--f-main);color:#fff}
+@media (max-width:480px){.trail .lv{width:64px;font-size:11px}.trail .lv b{width:38px;height:38px;font-size:16px}}
 .stars{font-size:clamp(48px,9vw,84px);letter-spacing:.1em;line-height:1}
 .stars span{color:rgba(205,187,255,.2)}.stars span.on{color:var(--gold);text-shadow:0 0 24px rgba(255,211,78,.8)}
 .stats{display:flex;gap:28px;justify-content:center;flex-wrap:wrap}
@@ -187,7 +201,8 @@ body.calm *{animation:none!important;transition:none!important}
   <div class="card">
     <h1 class="title">IJsbaan-klok</h1>
     <div class="players" id="players"></div>
-    <div class="levels" id="levels"></div>
+    <div class="trail" id="levels"></div>
+    <p class="rule">★★ = verder &nbsp;·&nbsp; ★★★ = alles in één keer, zonder Samen doen</p>
     <button class="btn primary" id="go" type="button">Schaatsen!</button>
     <button class="chip" id="open-parents" type="button">Voor ouders</button>
   </div>
@@ -215,11 +230,13 @@ body.calm *{animation:none!important;transition:none!important}
 
 <div class="overlay" id="end" hidden>
   <div class="card">
-    <h1 class="title">Klaar!</h1>
+    <h1 class="title" id="end-title">Klaar!</h1>
     <div class="stars" id="stars"></div>
+    <div class="gates" id="gates"></div>
+    <p id="goal"></p>
     <div class="stats" id="stats"></div>
     <p id="unlock"></p>
-    <div class="levels" id="levels-end"></div>
+    <div class="trail" id="levels-end"></div>
     <button class="btn primary" id="again" type="button">Nog een rondje</button>
   </div>
 </div>
@@ -244,7 +261,7 @@ const LEVELS = [
 const GATES = 10, AGAIN = 2, BUILD = new Set([2, 7]), FROZEN = new Set([4, 9]), START = 18 * 60, REACH = 240, HOLD = 350, FAST = 9000;
 
 /* op een gedeelde computer heeft elke naam eigen niveaus, voordoen en overzicht; geluid en rustig gelden voor iedereen */
-const OWN = ['level', 'unlocked', 'coached', 'log'];
+const OWN = ['level', 'unlocked', 'coached', 'log', 'stars'];
 const store = {
   player: '',
   key: k => 'ijsbaan.' + (store.player && OWN.includes(k) ? `${store.player}.` : '') + k,
@@ -255,7 +272,7 @@ const store = {
 store.player = store.get('player', '');
 const S = {
   phase: 'start', level: Math.min(store.get('level', 0), LEVELS.length - 1), unlocked: Math.min(store.get('unlocked', 0), LEVELS.length - 1),
-  T: START, P: START, disp: START, target: START, gate: 0, gates: GATES, again: [], score: 0, combo: 0, best: 0, firstTry: 0, coachEnd: 0,
+  T: START, P: START, disp: START, target: START, gate: 0, gates: GATES, again: [], score: 0, combo: 0, best: 0, firstTry: 0, coachEnd: 0, helped: false, marks: [],
   gateStart: 0, holdSince: 0, attempts: 0, sound: store.get('sound', true),
   calm: store.get('calm', matchMedia('(prefers-reduced-motion: reduce)').matches),
 };
@@ -268,7 +285,8 @@ const esc = s => s.replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&g
 const blocks = (words, cls = '') => `<div class="blocks ${cls}">${words.map(([w, r], i) => `<span class="word ${r}" style="--i:${i}">${esc(w)}</span>`).join('')}</div>`;
 
 /* ---------- canvas en maatvoering ---------- */
-const cv = $('#stage'), ctx = cv.getContext('2d');
+const cv = $('#stage');
+let ctx = cv.getContext('2d');
 let W = 0, H = 0, DPR = 1, R = 100, CX = 0, CY = 0, RB = 100;
 const G = {R: 100, cx: 0, cy: 0};
 let rinkC, scratchC, skyC, frostC;
@@ -504,7 +522,7 @@ function frame(now) {
   geometry(false);
   const frozenTime = now < stopUntil;
   if (!frozenTime) update(dt * (party ? party.slow : 1), now);
-  draw(now);
+  draw(now); drawTrail(now, dt);
   requestAnimationFrame(frame);
 }
 
@@ -947,7 +965,7 @@ function again() {
 
 function startRun() {
   const start = Math.floor(Math.random() * 24) * 60;
-  Object.assign(S, {phase: 'skate', T: start, P: start, disp: start, gate: 0, gates: GATES, again: [], score: 0, combo: 0, best: 0, firstTry: 0, usedHour: false});
+  Object.assign(S, {phase: 'skate', T: start, P: start, disp: start, gate: 0, gates: GATES, again: [], score: 0, combo: 0, best: 0, firstTry: 0, usedHour: false, helped: false, marks: []});
   scratchC.getContext('2d').clearRect(0, 0, 2 * RB + 40, 2 * RB + 40);
   $('#start').hidden = true; $('#end').hidden = true;
   nextGate();
@@ -956,7 +974,7 @@ function startRun() {
 /* terug naar het beginscherm, midden in een ronde */
 function stopRun() {
   if (coach) stopCoach(performance.now());
-  S.phase = 'start'; blast = null; party = null; frost.goal = 0; panel.hidden = true; $('#target').innerHTML = '';
+  S.phase = 'start'; blast = null; party = null; frost.goal = 0; trail.u = null; panel.hidden = true; $('#target').innerHTML = '';
   renderLive(); renderHud(); renderLevels('#levels'); $('#end').hidden = true; $('#start').hidden = false;
 }
 
@@ -988,31 +1006,53 @@ function passGate(now) {
 
 function endRun() {
   S.phase = 'end'; S.played = S.level; renderHud(); renderLive();
-  const special = BUILD.size + FROZEN.size, stars = 1 + (S.firstTry >= special / 2) + (S.firstTry === special);
+  /* sterren tellen de poorten waar je schrijft of bouwt; de derde ster is alles in één keer en nergens samen gedaan */
+  const special = BUILD.size + FROZEN.size, stars = 1 + (S.firstTry >= special / 2) + (S.firstTry === special && !S.helped);
+  const gold = allGold(), kept = store.get('stars', []);
+  kept[S.level] = Math.max(kept[S.level] || 0, stars); store.set('stars', kept);
+  const champion = !gold && allGold();
   let unlocked = '';
   if (stars >= 2 && S.level === S.unlocked && S.unlocked < LEVELS.length - 1) {
     S.unlocked++; store.set('unlocked', S.unlocked); unlocked = `Nieuw niveau open: ${LEVELS[S.unlocked].name}!`;
     S.level = S.unlocked; store.set('level', S.level);
   }
+  $('#end-title').textContent = champion ? 'Kampioen!' : 'Klaar!';
   $('#stars').innerHTML = [0, 1, 2].map(i => `<span class="${i < stars ? 'on' : ''}">★</span>`).join('');
-  $('#stats').innerHTML = `<div><b>${S.score}</b><span>punten</span></div><div><b>×${Math.min(S.best, 5)}</b><span>beste reeks</span></div><div><b>${S.firstTry}/${special}</b><span>in één keer goed</span></div>`;
-  $('#unlock').textContent = unlocked || (stars === 3 ? 'Drie sterren!' : stars === 2 ? 'Alles in één keer goed? Drie sterren!'
-    : 'De helft in één keer goed? Dan mag je verder.');
+  $('#gates').innerHTML = S.marks.map(m => `<span class="${m.first ? 'yes' : 'no'}">${m.first ? '✓' : '✗'}${m.together ? '<small>samen</small>' : ''}</span>`).join('');
+  $('#goal').textContent = champion ? 'Alle niveaus goud!' : stars === 3 ? 'Goud!' : stars === 2
+    ? (S.firstTry === special ? '★★★ = alles zelf, zonder Samen doen' : `★★★ = alle ${special} in één keer goed, zonder Samen doen`)
+    : `★★ = ${special / 2} van de ${special} in één keer goed`;
+  $('#stats').innerHTML = `<div><b>${S.score}</b><span>punten</span></div><div><b>×${Math.min(S.best, 5)}</b><span>beste reeks</span></div>`;
+  $('#unlock').textContent = unlocked;
   renderLevels('#levels-end');
   $('#target').innerHTML = '';
   if (stars < 2) return showEnd(stars);
-  S.phase = 'party'; party = {t0: performance.now(), dur: S.calm ? 1200 : 4600, level: S.played, slow: 1, jumped: false, cheered: false};
+  S.phase = 'party'; party = celebrate(champion);
   setTimeout(showEnd, party.dur, stars);
 }
 
 function showEnd(stars) {
   if (S.phase === 'start') return;
-  S.phase = 'end'; party = null;
-  $('#end').hidden = false; SFX.fanfare(); cannons(40 + stars * 30);
+  const champion = party && party.champion;
+  S.phase = 'end'; party = null; trail.u = stop(S.played)[0]; trail.hold = performance.now() + 900;
+  $('#end').hidden = false; SFX.fanfare(); cannons(40 + stars * 30 + (champion ? 120 : 0));
+}
+
+/* beste sterren per niveau; wie al verder was voor de sterren bewaard werden, had daar minstens twee */
+const best = i => Math.max(store.get('stars', [])[i] || 0, i < S.unlocked ? 2 : 0);
+const allGold = () => LEVELS.every((l, i) => best(i) === 3);
+const celebrate = champion => ({t0: performance.now(), dur: champion ? (S.calm ? 3500 : 13000) : (S.calm ? 1200 : 4600), level: S.played,
+  champion, slow: 1, jumped: false, cheered: false, next: 0, boarded: false, glass: null});
+
+/* alles goud: de beker aan het eind van de lijn speelt het kampioensfeest nog een keer */
+function replayChampion() {
+  audio(); $('#start').hidden = true; S.phase = 'party';
+  const mine = party = celebrate(true);
+  setTimeout(() => { if (party !== mine) return; party = null; S.phase = 'start'; trail.u = null; $('#start').hidden = false; }, mine.dur);
 }
 
 /* dezelfde schaatser van voren (of van achteren, zonder gezicht), juichend: elk niveau met een eigen gebaar */
-function skaterFront(x, y, s, suit, accent, pose, t, face) {
+function skaterFront(x, y, s, suit, accent, pose, t, face, board = false) {
   ctx.save(); ctx.translate(x, y - Math.abs(Math.sin(t * 7)) * 3 * s); ctx.scale(s, s); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const limb = (a, b, w, color) => { ctx.strokeStyle = color; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke(); };
   const wig = Math.sin(t * 9), hands = {
@@ -1026,7 +1066,17 @@ function skaterFront(x, y, s, suit, accent, pose, t, face) {
     const hip = [side * 3, -17], knee = [side * 5.5, -8.5], foot = [side * 7.5, -1];
     limb(hip, knee, 5.2, suit); limb(knee, foot, 4.6, suit);
     limb([side * 7.5 - 2.5, foot[1]], [side * 7.5 + 2.5, foot[1]], 4, BOOT);
-    limb([side * 7.5 - 4, foot[1] + 3], [side * 7.5 + 4, foot[1] + 3], 1.6, BLADE);
+    if (!board) limb([side * 7.5 - 4, foot[1] + 3], [side * 7.5 + 4, foot[1] + 3], 1.6, BLADE);
+  }
+  if (board) {
+    for (const side of [-1, 1]) {
+      const jet = ctx.createLinearGradient(0, 4, 0, 44);
+      jet.addColorStop(0, 'rgba(190,245,255,.95)'); jet.addColorStop(1, 'rgba(62,232,255,0)');
+      ctx.fillStyle = jet; ctx.beginPath(); ctx.moveTo(side * 9 - 2.5, 4); ctx.lineTo(side * 9 + 2.5, 4);
+      ctx.lineTo(side * 9 + 6 + Math.sin(t * 40 + side) * 1.5, 44); ctx.lineTo(side * 9 - 6 + Math.sin(t * 37 - side) * 1.5, 44); ctx.closePath(); ctx.fill();
+      limb([side * 9, 2], [side * 9, 5], 3.4, '#8A93A8');
+    }
+    limb([-14, 1.5], [14, 1.5], 4.2, '#3EE8FF'); limb([-12, 1.5], [12, 1.5], 1.4, '#FFFFFF');
   }
   limb([0, -18], [0, -29], 10, suit);
   hands.forEach(([hx, hy], i) => {
@@ -1047,15 +1097,15 @@ function skaterFront(x, y, s, suit, accent, pose, t, face) {
 }
 
 /* de schaatser zoals een camera die om hem heen draait hem ziet: yaw 0 is van voren, een kwart slag van opzij */
-function turntable(x, y, s, yaw, pose, t, speed) {
+function turntable(x, y, s, yaw, pose, t, speed, [suit, accent]) {
   const front = Math.cos(yaw), side = Math.sin(yaw);
   ctx.save(); ctx.translate(x, y);
   if (Math.abs(front) >= Math.abs(side)) {
     ctx.scale(Math.max(.3, Math.abs(front)), 1);
-    skaterFront(0, 0, s, '#FF4FB3', '#FFD34E', pose, t, front > 0);
+    skaterFront(0, 0, s, suit, accent, pose, t, front > 0);
   } else {
     ctx.scale(Math.max(.3, Math.abs(side)), 1);
-    skater(0, 0, s, '#FF4FB3', '#FFD34E', t * 11, speed, Math.sign(side));
+    skater(0, 0, s, suit, accent, t * 11, speed, Math.sign(side));
   }
   ctx.restore();
 }
@@ -1069,22 +1119,32 @@ const PARTIES = [
   {pose: 'clap', turns: 2, way: -1, tilt: .1},
   {pose: 'star', turns: 3, way: 1, tilt: -.1},
 ];
+const PARTY = {lift: .12, zoom: .45, dark: .7, suit: ['#FF4FB3', '#FFD34E'], keys: [.22, .3, .74, .8], ghosts: 0, cheer: 'Wieeew!'};
+/* alle niveaus goud: een gouden schaatser, hoger en langer in de lucht, drie slagen met alle gebaren, in bullet-time met
+   nabeelden, en daarna vuurwerk */
+const CHAMPION = {pose: 'star', poses: ['v', 'pump', 'clap', 'wave', 'star'], turns: 3, way: 1, tilt: .16, lift: .15, zoom: .6, dark: .88,
+  suit: ['#FFD34E', '#FF4FB3'], keys: [.1, .15, .46, .5], ghosts: 5, cheer: ''};
+/* daarna worden de ijzers een flyboard: opstijgen, rondvliegen, op de camera af en krak, tegen het scherm */
+const FLY = [.6, .83, .9];
 let party = null;
 const span = (t, a, b) => Math.min(1, Math.max(0, (t - a) / (b - a)));
 
 function drawParty(now) {
-  const t = Math.min(1, (now - party.t0) / party.dur), look = PARTIES[party.level], size = Math.min(W, H) / 170;
-  const ground = H * .64, skate = span(t, 0, .22), rise = span(t, .22, .3), orbit = span(t, .3, .74), drop = span(t, .74, .8);
-  const zoom = 1 + .45 * Math.sin(Math.PI * span(t, .26, .8)), calm = S.calm;
+  const look = {...PARTY, ...(party.champion ? CHAMPION : PARTIES[party.level])}, [k1, k2, k3, k4] = look.keys;
+  const t = Math.min(1, (now - party.t0) / party.dur), size = Math.min(W, H) / 170;
+  const ground = H * .64, skate = span(t, 0, k1), rise = span(t, k1, k2), orbit = span(t, k2, k3), drop = span(t, k3, k4);
+  const zoom = 1 + look.zoom * Math.sin(Math.PI * span(t, k1 + .04, k4)), calm = S.calm;
   const sweep = look.way > 0 ? 2 * Math.PI * look.turns - Math.PI / 2 : -(Math.PI / 2 + 2 * Math.PI * (look.turns - 1));
-  const yaw = calm ? 0 : Math.PI / 2 + ease(orbit) * sweep;
-  const air = ground - (Math.sin(Math.PI / 2 * rise) * (1 - drop)) * H * .12 - Math.sin(Math.PI * orbit) * H * .02;
+  const turn = calm ? () => 0 : o => Math.PI / 2 + ease(o) * sweep, yaw = turn(orbit);
+  const air = ground - (Math.sin(Math.PI / 2 * rise) * (1 - drop)) * H * look.lift - Math.sin(Math.PI * orbit) * H * .02;
   const x = -60 + (W / 2 + 60) * (1 - Math.pow(1 - skate, 2));
+  const pose = look.poses && orbit < 1 ? look.poses[Math.min(look.poses.length - 1, Math.floor(orbit * look.poses.length))] : look.pose;
   party.slow = orbit > 0 && orbit < 1 && !calm ? .12 : 1;
-  ctx.save(); ctx.fillStyle = `rgba(22,10,54,${Math.min(.7, t * 3)})`; ctx.fillRect(0, 0, W, H); ctx.restore();
+  ctx.save(); ctx.fillStyle = `rgba(22,10,54,${Math.min(look.dark, t * 3)})`; ctx.fillRect(0, 0, W, H); ctx.restore();
+  if (party.champion) spotlights(now, t, x, ground);
   ctx.save();
   const focus = [x, air - 20 * size];
-  ctx.translate(...focus); ctx.rotate(look.tilt * Math.sin(Math.PI * span(t, .26, .8))); ctx.scale(zoom, zoom); ctx.translate(-focus[0], -focus[1]);
+  ctx.translate(...focus); ctx.rotate(look.tilt * Math.sin(Math.PI * span(t, k1 + .04, k4))); ctx.scale(zoom, zoom); ctx.translate(-focus[0], -focus[1]);
   if (party.slow < 1) {
     ctx.save(); ctx.strokeStyle = 'rgba(62,232,255,.18)'; ctx.lineWidth = 2;
     for (let i = 0; i < 24; i++) {
@@ -1093,26 +1153,152 @@ function drawParty(now) {
     }
     ctx.restore();
   }
+  const flying = party.champion && t >= FLY[0];
+  if (!flying) {
   ctx.save(); ctx.translate(x, ground + 2 * size); ctx.scale(1, .22);
   ctx.strokeStyle = 'rgba(62,232,255,.5)'; ctx.lineWidth = 3 / .22; ctx.beginPath(); ctx.arc(0, 0, 34 * size, 0, Math.PI * 2); ctx.stroke();
   ctx.fillStyle = '#FFD34E';
   for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + yaw; if (Math.sin(a) > 0) { ctx.beginPath(); ctx.arc(Math.cos(a) * 34 * size, Math.sin(a) * 34 * size, 1.6 * size, 0, Math.PI * 2); ctx.fill(); } }
   ctx.restore();
-  turntable(x, air, size, t < .22 ? Math.PI / 2 : yaw, look.pose, now / 1000, skate < 1 ? 7 : 1);
+  if (party.slow < 1) for (let i = look.ghosts; i > 0; i--) {
+    ctx.save(); ctx.globalAlpha = .1 + .05 * (look.ghosts - i);
+    turntable(x, air, size, turn(Math.max(0, orbit - i * .018)), pose, now / 1000, 1, look.suit); ctx.restore();
+  }
+  turntable(x, air, size, t < k1 ? Math.PI / 2 : yaw, pose, now / 1000, skate < 1 ? 7 : 1, look.suit);
+  }
   ctx.restore();
+  if (flying) flight(now, t, size, ground, look.suit);
   if (rise > 0 && !party.jumped) { party.jumped = true; burst(x, air - 20 * size, 140, 13); SFX.hop(); }
   if (drop >= 1 && !party.cheered) {
     party.cheered = true;
-    floatText(W / 2, ground - 75 * size, 'Wieeew!', '#FFD34E'); burst(W / 2, ground - 30 * size, 90, 10); SFX.gate(5); kick(10, 0);
+    if (look.cheer) floatText(W / 2, ground - 75 * size, look.cheer, '#FFD34E');
+    burst(W / 2, ground - 30 * size, 90, 10); SFX.gate(5); kick(10, 0);
+  }
+  if (party.champion && party.cheered) {
+    const pop = Math.min(1, (t - k4) / .05), big = Math.min(W / 7, 92) * (calm ? 1 : .6 + .4 * pop + .04 * Math.sin(now / 160));
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `400 ${Math.round(big)}px Monoton, sans-serif`;
+    ctx.fillStyle = '#FFD34E'; ctx.shadowColor = '#FFD34E'; ctx.shadowBlur = 30; ctx.fillText('KAMPIOEN!', W / 2, H * .17); ctx.restore();
+  }
+  if (party.champion && party.cheered && !party.glass && now > party.next) {
+    party.next = now + (calm ? 900 : 380);
+    const [fx, fy] = [W * (.12 + .76 * Math.random()), H * (.1 + .3 * Math.random())];
+    burst(fx, fy, 70, 9); rings.push({x: fx, y: fy, r: 6, life: 1}); SFX.gate(1 + Math.floor(Math.random() * 5));
   }
 }
 
+/* ---------- de volglijn: alle niveaus op één lijn, zoals in een bouwboekje; de schaatser staat waar je bent en elk stuk lijn
+   heeft de kleur van de sterren op dat niveau, zodat je ziet waar nog goud te halen is ---------- */
+const TRAIL = ['rgba(205,187,255,.55)', '#E39A5F', '#DCE6F5', '#FFD34E'], LOCKED = 'rgba(205,187,255,.16)', CUP = .95;
+const stop = i => { const u = .07 + .185 * i; return [u, trailY(u)]; };
+function trailY(u) { return .47 - .12 * Math.cos((u - .07) / .185 * Math.PI); }
+const trail = {u: null, hold: 0, phase: 0};
+
+/* het flyboard: van de landingsplek omhoog, een rondje door het scherm met waterstralen, dan recht op je af tot hij het
+   glas raakt; daar blijft hij even plakken en glijdt omlaag, en het scherm heeft een barst */
+function flight(now, t, size, ground, [suit, accent]) {
+  const go = span(t, FLY[0], FLY[1]), near = span(t, FLY[1], FLY[2]), slide = span(t, FLY[2], 1);
+  const roam = p => [W / 2 + W * .32 * Math.sin(Math.PI * 2 * p * 1.5), H * .5 + H * .16 * Math.sin(Math.PI * 2 * p * 2 + .4)];
+  const lift = Math.min(1, go * 6), [rx, ry] = roam(go), [ex, ey] = roam(1), hit = [W / 2, H * .45], biggest = H * 1.1 / (50 * size);
+  let [x, y] = [W / 2 + (rx - W / 2) * lift, ground - 25 * size + (ry - ground + 25 * size) * lift], scale = 1.25, tilt = Math.cos(Math.PI * 2 * go * 1.5) * .35 * lift;
+  if (near > 0) { [x, y] = towards([ex, ey], hit, near); scale = 1.25 + (biggest - 1.25) * near * near; tilt *= 1 - near; }
+  if (slide > 0) { scale = biggest; y = hit[1] + H * .3 * ease(slide); tilt = .12 * Math.sin(slide * 3); }
+  if (go > 0 && !party.boarded) { party.boarded = true; burst(W / 2, ground - 10 * size, 80, 9); SFX.hop(); }
+  if (near < 1) spray(x, y + 28 * size * scale, 0, -1, 3);
+  ctx.save(); ctx.translate(x, y); ctx.rotate(tilt);
+  if (slide > 0) { ctx.scale(1.08, .94); ctx.globalAlpha = 1 - span(slide, .7, 1); }
+  skaterFront(0, 25 * size * scale, size * scale, suit, accent, slide > 0 ? 'star' : 'v', now / 1000, true, near < 1);
+  ctx.restore();
+  if (near >= 1 && !party.glass) {
+    party.glass = cracks(...hit); SFX.crack(); SFX.shatter(); kick(26, 140); burst(...hit, 120, 14, 'confetti'); rings.push({x: hit[0], y: hit[1], r: 10, life: 1});
+  }
+  if (party.glass) {
+    ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.shadowColor = '#BFF3FF'; ctx.shadowBlur = 8;
+    const glow = ctx.createRadialGradient(...hit, 0, ...hit, 70); glow.addColorStop(0, 'rgba(255,255,255,.55)'); glow.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(...hit, 70, 0, Math.PI * 2); ctx.fill();
+    for (const {pts, w} of party.glass) { ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(...pts[0]); for (const q of pts.slice(1)) ctx.lineTo(...q); ctx.stroke(); }
+    ctx.restore();
+  }
+}
+
+/* een barst in het glas: kronkelende stralen vanuit de klap en wat stukjes ring ertussen */
+function cracks(cx, cy) {
+  const lines = [], rays = 16, reach = Math.max(W, H);
+  for (let i = 0; i < rays; i++) {
+    let a = (i + Math.random() * .6) / rays * Math.PI * 2;
+    const pts = [[cx, cy]], end = reach * (.2 + Math.random() * .45);
+    for (let r = 0; r < end; r += 18 + Math.random() * 46) { a += (Math.random() - .5) * .45; pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); }
+    lines.push({pts, w: 1.2 + Math.random() * 1.8});
+  }
+  for (const ring of [36, 85, 150]) for (let i = 0; i < rays; i++) {
+    if (Math.random() < .35) continue;
+    const a0 = i / rays * Math.PI * 2, a1 = (i + 1) / rays * Math.PI * 2, r0 = ring * (.85 + Math.random() * .3), r1 = ring * (.85 + Math.random() * .3);
+    lines.push({pts: [[cx + Math.cos(a0) * r0, cy + Math.sin(a0) * r0], [cx + Math.cos(a1) * r1, cy + Math.sin(a1) * r1]], w: 1});
+  }
+  return lines;
+}
+
+/* zoeklichten van onder uit de hoeken, die de schaatser zoeken en na de landing rond zwaaien */
+function spotlights(now, t, x, ground) {
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (const [side, color] of [[0, 'rgba(255,211,78,'], [1, 'rgba(62,232,255,'], [.5, 'rgba(255,79,179,']]) {
+    const bx = W * side, by = H + 20, sway = S.calm ? 0 : Math.sin(now / 700 + side * 4) * W * .18 * Math.min(1, t * 2);
+    const tx = x + sway, ty = ground - H * .25, a = Math.atan2(ty - by, tx - bx), spread = .09, len = Math.hypot(tx - bx, ty - by) * 1.4;
+    const g = ctx.createRadialGradient(bx, by, 0, bx, by, len);
+    g.addColorStop(0, color + '.32)'); g.addColorStop(1, color + '0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(bx, by);
+    ctx.lineTo(bx + Math.cos(a - spread) * len, by + Math.sin(a - spread) * len); ctx.lineTo(bx + Math.cos(a + spread) * len, by + Math.sin(a + spread) * len);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
 function renderLevels(sel) {
-  $(sel).innerHTML = LEVELS.map((l, i) => `<button class="lv" type="button" data-level="${i}" aria-pressed="${i === S.level}" ${i > S.unlocked ? 'disabled' : ''}><b>${i + 1}</b>${l.name}</button>`).join('');
+  $(sel).innerHTML = `<canvas></canvas>${LEVELS.map((l, i) => {
+    const [u, v] = stop(i), n = best(i);
+    return `<button class="lv" type="button" data-level="${i}" aria-pressed="${i === S.level}" ${i > S.unlocked ? 'disabled' : ''}
+      style="left:${u * 100}%;top:${v * 100}%;--c:${i > S.unlocked ? LOCKED : TRAIL[n]}" aria-label="${l.name}, ${n} van 3 sterren"><b>${i + 1}</b>${l.name}<i>${'★'.repeat(n)}<em>${'★'.repeat(3 - n)}</em></i></button>`;
+  }).join('')}<button class="cup" type="button" style="left:${CUP * 100}%;top:${trailY(CUP) * 100}%" aria-label="Alles goud" ${allGold() ? '' : 'disabled'}></button>`;
   $(sel).querySelectorAll('.lv').forEach(b => b.addEventListener('click', () => {
     S.level = +b.dataset.level; store.set('level', S.level); renderLevels(sel); renderHud();
   }));
+  $(sel).querySelector('.cup').addEventListener('click', () => { if (S.phase === 'start') replayChampion(); });
   $('#again').textContent = S.level === S.played ? 'Nog een rondje' : `Naar ${LEVELS[S.level].name}!`;
+}
+
+function drawTrail(now, dt) {
+  const box = !$('#end').hidden ? $('#levels-end') : !$('#start').hidden ? $('#levels') : null;
+  if (!box) return;
+  const c = box.querySelector('canvas'), w = box.clientWidth, h = box.clientHeight;
+  if (c.width !== Math.round(w * DPR) || c.height !== Math.round(h * DPR)) { c.width = Math.round(w * DPR); c.height = Math.round(h * DPR); }
+  const main = ctx; ctx = c.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, w, h);
+  const pt = u => [u * w, trailY(u) * h], stars = LEVELS.map((l, i) => best(i)), gold = stars.every(n => n === 3);
+  LEVELS.forEach((l, i) => {
+    const from = i ? (stop(i - 1)[0] + stop(i)[0]) / 2 : .02, to = i < LEVELS.length - 1 ? (stop(i)[0] + stop(i + 1)[0]) / 2 : CUP;
+    const color = i > S.unlocked ? LOCKED : TRAIL[stars[i]];
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineWidth = 7; ctx.strokeStyle = color;
+    if (i > S.unlocked) ctx.setLineDash([2, 12]);
+    if (stars[i] === 3) { ctx.shadowColor = '#FFD34E'; ctx.shadowBlur = 14; }
+    ctx.beginPath(); ctx.moveTo(...pt(from));
+    for (let u = from; u < to; u += .004) ctx.lineTo(...pt(u));
+    ctx.lineTo(...pt(to)); ctx.stroke(); ctx.restore();
+  });
+  const [cx, cy] = pt(CUP);
+  ctx.save(); ctx.translate(cx, cy); ctx.lineJoin = 'round';
+  ctx.fillStyle = gold ? '#FFD34E' : 'rgba(205,187,255,.12)'; ctx.strokeStyle = gold ? '#FFF3C4' : 'rgba(205,187,255,.4)'; ctx.lineWidth = 2;
+  if (gold) { ctx.shadowColor = '#FFD34E'; ctx.shadowBlur = 18 + 8 * Math.sin(now / 300); }
+  ctx.beginPath(); ctx.moveTo(-15, -40); ctx.lineTo(15, -40); ctx.quadraticCurveTo(15, -18, 3, -15); ctx.lineTo(3, -8); ctx.lineTo(10, -4);
+  ctx.lineTo(10, 0); ctx.lineTo(-10, 0); ctx.lineTo(-10, -4); ctx.lineTo(-3, -8); ctx.lineTo(-3, -15); ctx.quadraticCurveTo(-15, -18, -15, -40); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(-15, -32, 6, Math.PI * .5, Math.PI * 1.5); ctx.arc(15, -32, 6, Math.PI * 1.5, Math.PI * .5); ctx.stroke();
+  ctx.restore();
+  const goal = stop(S.level)[0];
+  if (trail.u === null) trail.u = goal;
+  const moving = now > trail.hold && Math.abs(goal - trail.u) > .002;
+  if (moving) trail.u += (goal - trail.u) * Math.min(1, dt / 420);
+  trail.phase += dt * (moving ? .02 : .004);
+  const [sx, sy] = pt(trail.u);
+  skater(sx, sy - 24, Math.min(1.35, w / 420), '#FF4FB3', '#FFD34E', trail.phase, moving ? 3 : .3, moving && goal < trail.u ? -1 : 1);
+  ctx = main;
 }
 
 /* ---------- bevroren poort: het taalmodel leest mee ---------- */
@@ -1171,8 +1357,15 @@ function write(note = '', example = null) {
     <form id="form"><input id="answer" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" aria-label="Jouw antwoord" placeholder="schrijf hier…">
     <button class="btn primary" type="submit">Ontdooi!</button><button class="btn ghost" type="button" id="samen-write">Samen doen</button></form>`);
   const input = $('#answer'); setTimeout(() => input.focus(), 50);
-  $('#form').addEventListener('submit', e => { e.preventDefault(); input.value.trim() ? read(input.value.trim()) : together(); });
-  $('#samen-write').addEventListener('click', together);
+  $('#form').addEventListener('submit', e => {
+    e.preventDefault();
+    if (input.value.trim()) return read(input.value.trim());
+    panel.querySelector('.ask').textContent = 'Schrijf eerst de tijd.'; SFX.soft();
+  });
+  /* op een tablet is de tik naast het toetsenbord om de klok weer te zien geen Samen doen: die tik sluit alleen het toetsenbord */
+  let closing = false;
+  $('#samen-write').addEventListener('pointerdown', e => { closing = e.pointerType !== 'mouse' && document.activeElement === input; });
+  $('#samen-write').addEventListener('click', () => { if (closing) { closing = false; return input.blur(); } together(); });
 }
 
 async function read(text) {
@@ -1315,6 +1508,8 @@ const shown = t => LEVELS[S.level].digital ? hhmm(t) : said(t);
 function slip(mistake, how, what) { S.slips.push(mistake); S.example = S.example || {mistake, how, what}; }
 
 function logGate(kind, first) {
+  if (S.together) S.helped = true;
+  if (kind !== 'skate') S.marks.push({kind, first, together: S.together});
   const log = store.get('log', []);
   log.push({at: Date.now(), level: S.level, kind, first, together: S.together, slips: S.slips, target: shown(S.target), right: said(S.target), example: S.example});
   store.set('log', log.slice(-3000));

@@ -262,6 +262,23 @@ def test_tapping_an_hour_on_a_tablet(playwright: Playwright, url: str) -> None:
     browser.close()
 
 
+def test_closing_the_keyboard_on_a_tablet_is_no_samen(playwright: Playwright, url: str) -> None:
+    browser = playwright.webkit.launch()
+    page, errors = open_game(browser, url, **playwright.devices["iPad (gen 7)"])
+    page.evaluate("S.level = 2; S.unlocked = 2")
+    page.click("#go")
+    page.wait_for_function("S.phase === 'skate'")
+    page.evaluate("S.gate = 4; nextGate()")
+    page.wait_for_selector("#answer")
+    page.fill("#answer", "half")
+    page.tap("#samen-write")
+    assert page.evaluate("[S.together, document.activeElement.id, $('#answer').value]") == [False, "", "half"]
+    page.tap("#samen-write")
+    page.wait_for_function("S.together")
+    assert errors == []
+    browser.close()
+
+
 def test_a_crash_is_shown(chromium: Browser, url: str) -> None:
     page, errors = open_game(chromium, url)
     page.evaluate("setTimeout(() => { throw new Error('kapot') })")
@@ -362,6 +379,8 @@ def test_writing_nothing_builds_it_together(chromium: Browser, url: str) -> None
     page.wait_for_selector("#answer")
     page.evaluate("S.target = 18 * 60 + 37")
     page.press("#answer", "Enter")
+    assert page.inner_text("#panel .ask") == "Schrijf eerst de tijd."
+    page.click("#samen-write")
     page.click(".choices .btn:text-is('6')")
     page.wait_for_selector(".tray .word")
     assert "zeven over half zeven" in page.inner_text(".ghost-line").replace("\n", " ")
@@ -443,3 +462,40 @@ def test_the_school_version_plays_without_a_server(chromium: Browser, site: str)
 
 def accept(dialog: Any) -> None:
     dialog.accept()
+
+
+def end_level(page: Page, level: int, first: int, helped: bool) -> None:
+    start_level(page, level)
+    page.evaluate(f"""S.firstTry = {first}; S.helped = {str(helped).lower()}; S.marks = [true, true, false, true].map(f => ({{kind: 'build', first: f}}));
+      S.gate = S.gates; endRun(); true""")
+    page.wait_for_function("S.phase === 'end'")
+
+
+def test_samen_doen_keeps_the_third_star(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    end_level(page, 1, first=4, helped=True)
+    assert page.locator("#stars .on").count() == 2
+    assert page.inner_text("#goal") == "★★★ = alles zelf, zonder Samen doen"
+    assert page.locator("#gates .yes").count() == 3
+    assert page.evaluate("store.get('stars')") == [None, 2]
+    page.evaluate("stopRun()")
+    assert page.inner_text("#levels .lv[data-level='1'] i") == "★★★"
+    assert page.locator("#levels .lv[data-level='1'] i em").inner_text() == "★"
+    assert errors == []
+
+
+def test_all_gold_is_a_champion(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    page.evaluate("store.set('stars', [3, 3, 3, 3, 2]); store.set('unlocked', 4)")
+    page.reload()
+    page.wait_for_function("PHRASES.length === 720")
+    assert page.locator("#levels .cup").is_disabled()
+    end_level(page, 4, first=4, helped=False)
+    assert page.inner_text("#end-title") == "Kampioen!"
+    assert page.inner_text("#goal") == "Alle niveaus goud!"
+    page.evaluate("stopRun()")
+    page.click("#levels .cup")
+    assert page.evaluate("[S.phase, party.champion]") == ["party", True]
+    page.wait_for_function("S.phase === 'start'", timeout=5000)
+    assert page.locator("#start").is_visible()
+    assert errors == []

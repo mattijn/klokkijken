@@ -1,6 +1,6 @@
 # IJsbaan-klok
 
-Klokkijken als schaatsspel. Tik het uur en draai de grote wijzer naar de goede tijd. Bij een bevroren poort schrijf je de tijd op; spelling maakt niet uit. Bij een bouwpoort tik je de tijd met woordblokjes bij elkaar, en een fout blokje krijgt de regel die het breekt. Wie vastzit, doet het samen; die tijd komt later terug om zelf te doen. De tijdlogica zit in `klok.py`, de vragen en antwoorden in `play.py`.
+Klokkijken als schaatsspel. Tik het uur en draai de grote wijzer naar de goede tijd. Bij een bevroren poort schrijf je de tijd op; spelling maakt niet uit. Bij een bouwpoort tik je de tijd met woordblokjes bij elkaar, en een fout blokje krijgt de regel die het breekt. Wie vastzit, doet het samen; die tijd komt later terug om zelf te doen. Twee sterren (de helft van de schrijf- en bouwpoorten in één keer goed) openen het volgende niveau, drie sterren is alles in één keer en nergens samen gedaan. De volglijn op het beginscherm kleurt per niveau brons, zilver of goud; alles goud is kampioen. De tijdlogica zit in `klok.py`, de vragen en antwoorden in `play.py`.
 
 ## Op school
 
