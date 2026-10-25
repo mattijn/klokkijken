@@ -11,7 +11,10 @@ Open daarna http://localhost:8740.
 
 Het model loopt via [fm-pydantic-ai](https://github.com/mattijn/fm-pydantic-ai), dat `uv sync` van GitHub haalt.
 
+De browsertests in `tests/test_play.py` spelen per niveau een ronde in Chromium en tikken op een iPad in WebKit:
+
 ```bash
+uv run playwright install chromium webkit
 uv run --group dev ruff check . && uv run --group dev ruff format --check . && uv run --group dev mypy && uv run --group dev pytest
 uv run python -m evals.spelling
 ```

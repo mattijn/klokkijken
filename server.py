@@ -15,7 +15,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
 import tutor
-from klok import VALUES, Reading, Step, judge, nudge, parse, place, readings, sentence, steps, tray, words
+from klok import VALUES, Reading, Step, judge, nudge, parse, place, readings, sentence, spelled_out, steps, tray, words
 
 __all__ = ["app"]
 
@@ -76,10 +76,14 @@ async def question(dialogue: Dialogue) -> dict[str, Any]:
 
 
 async def read(request: Request) -> JSONResponse:
-    """Repair the child's spelling and judge the time; a wrong time opens a dialogue, which the client asks next."""
+    """Read the child's words, by the rules when they already form a time and by the speller when they don't, and judge
+    the time; a wrong time opens a dialogue, which the client asks next."""
     answer = Answer.model_validate(await request.json())
-    spelled = await tutor.spell(answer.text)
-    said = parse(spelled)
+    spelled = answer.text
+    said = parse(spelled_out(spelled))
+    if said is None:
+        spelled = await tutor.spell(answer.text)
+        said = parse(spelled)
     right = words(readings(answer.hour, answer.minute)[0])
     if said is None:
         return JSONResponse({"verdict": "unreadable", "spelled": spelled, "right": right})

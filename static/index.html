@@ -97,6 +97,15 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:8;background:rgba(22,10,54,.72);padding:24px;
   -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .overlay[hidden]{display:none}
+.overlay.crash{z-index:20}
+.sub-title{font:800 clamp(26px,4vw,36px)/1.1 var(--f-main);margin:0;color:#fff}
+.card.wide{max-width:760px;width:100%}
+.card code{font:13px/1.4 ui-monospace,monospace;color:var(--mute);max-width:60ch;overflow-wrap:anywhere}
+.report{width:100%;border-collapse:collapse;text-align:left;font-size:16px}
+.report th,.report td{padding:9px 10px;border-bottom:1px solid var(--line)}
+.report th{color:var(--mute);font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+.report .n{text-align:right;font-variant-numeric:tabular-nums}
+.report .up{color:var(--pink)}.report .down{color:var(--cyan)}
 .card{text-align:center;max-width:720px;display:grid;gap:18px;justify-items:center}
 .title{font:400 clamp(46px,10vw,118px)/1 var(--f-neon);color:var(--pink);text-shadow:0 0 .1em rgba(255,79,179,.8),0 0 .4em rgba(255,79,179,.35);margin:0}
 .card p{margin:0;color:var(--lilac);font-size:clamp(17px,2.2vw,21px);max-width:46ch}
@@ -117,6 +126,12 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 @keyframes blink{50%{opacity:.25;transform:scale(.7)}}
 body.calm *{animation:none!important;transition:none!important}
 @media (max-width:640px){.hud .level{display:none}.dot{width:10px;height:10px}.dots{gap:5px}}
+@media (max-width:480px){
+  .hud{gap:8px;padding-left:12px;padding-right:12px}.hud .right{gap:6px}.chip{padding:7px 9px;font-size:12px}.dot{width:8px;height:8px}.dots{gap:4px}
+  .panel{padding:14px 16px;border-radius:20px}.panel .who{margin-bottom:6px}.panel .ask{font-size:18px}
+  .built{min-height:46px;margin:4px 0 10px;gap:8px}.built .slot{width:52px;height:44px}
+  .tray{gap:8px}.tray .word{font-size:17px;padding:7px 12px;min-width:50px;min-height:44px}.tile{min-width:50px;min-height:44px}
+}
 </style>
 </head>
 <body>
@@ -140,6 +155,25 @@ body.calm *{animation:none!important;transition:none!important}
     <p>Tik het uur en draai de grote wijzer naar de goede tijd. Bij een bevroren poort schrijf je de tijd op; spelling maakt niet uit.</p>
     <div class="levels" id="levels"></div>
     <button class="btn primary" id="go" type="button">Schaatsen!</button>
+    <button class="chip" id="open-parents" type="button">Voor ouders</button>
+  </div>
+</div>
+
+<div class="overlay" id="parents" hidden>
+  <div class="card wide">
+    <h2 class="sub-title">Voor ouders</h2>
+    <p>Welke denkfouten komen voor, deze week tegenover de week ervoor. Alles blijft in deze browser.</p>
+    <div id="report"></div>
+    <button class="btn primary" id="close-parents" type="button">Terug</button>
+  </div>
+</div>
+
+<div class="overlay crash" id="crash" hidden>
+  <div class="card">
+    <h2 class="sub-title">De klok is vastgelopen</h2>
+    <p>Dat is een fout in het spel, niet in jouw antwoord. Laad de pagina opnieuw om verder te spelen.</p>
+    <code id="crash-msg"></code>
+    <button class="btn primary" id="reload" type="button">Opnieuw laden</button>
   </div>
 </div>
 
@@ -157,6 +191,11 @@ body.calm *{animation:none!important;transition:none!important}
 <script>
 'use strict';
 const $ = s => document.querySelector(s);
+
+/* een fout legt de klok stil; laat dat zien in plaats van stil te bevriezen */
+function crashed(message) { $('#crash-msg').textContent = message; $('#crash').hidden = false; }
+addEventListener('error', e => crashed(e.message));
+addEventListener('unhandledrejection', e => crashed(String(e.reason)));
 
 /* ---------- spel ---------- */
 const LEVELS = [
@@ -601,6 +640,7 @@ async function nudge() {
   S.nudged = true;
   const {nudge: text} = await api('/nudge', {...clock(), at: face(S.T)});
   if (!text || S.phase !== 'skate' || !S.nudgeSince) return;
+  S.slips.push('hour');
   $('#live').insertAdjacentHTML('beforeend', `<span class="nudge">${esc(text)}</span>`);
 }
 
@@ -623,16 +663,17 @@ const minuteAt = e => { const a = Math.atan2(e.clientX - CX, -(e.clientY - CY));
 const wrap = d => mod(d + 30, 60) - 30;
 const snap = () => LEVELS[S.level].digital ? 1 : 5;
 
-/* de getallen zijn de uren: tikken zet de kleine wijzer; de buitenrand en de grote wijzer zelf draaien de minuten */
+/* de getallen zijn de uren: tikken of de kleine wijzer slepen zet het uur; de grote wijzer of de rand draaien de minuten */
 const hourAt = e => mod(Math.round(minuteAt(e) / 5), 12) || 12;
-const onNumber = e => { const n = hourAt(e), [x, y] = at(n / 12 * Math.PI * 2, R * .74); return Math.hypot(e.clientX - x, e.clientY - y) < R * .1 ? n : 0; };
+const grip = (e, k) => Math.max(R * k, e.pointerType === 'touch' ? 30 : 18);
+const onNumber = e => { const n = hourAt(e), [x, y] = at(n / 12 * Math.PI * 2, R * .74); return Math.hypot(e.clientX - x, e.clientY - y) < grip(e, .1) ? n : 0; };
 
 function zone(e) {
-  const r = Math.hypot(e.clientX - CX, e.clientY - CY), near = ([x, y]) => Math.hypot(e.clientX - x, e.clientY - y) < R * .16;
+  const r = Math.hypot(e.clientX - CX, e.clientY - CY), near = ([x, y]) => Math.hypot(e.clientX - x, e.clientY - y) < grip(e, .16);
   if (S.phase !== 'skate' || r > R * 1.4) return null;
   if (r > R * .86) return {kind: 'ring'};
-  if (near(at(mod(S.disp, 60) / 60 * Math.PI * 2, R * .8))) return {kind: 'hand', n: onNumber(e)};
-  if (near(at(mod(S.disp / 60, 12) / 12 * Math.PI * 2, R * .5))) return {kind: 'small'};
+  if (near(at(mod(S.T, 60) / 60 * Math.PI * 2, R * .8))) return {kind: 'hand', n: onNumber(e)};
+  if (near(at(mod(S.T / 60, 12) / 12 * Math.PI * 2, R * .5))) return {kind: 'small'};
   if (r > R * .58) return {kind: 'hour', n: hourAt(e)};
   return {kind: 'hand'};
 }
@@ -645,8 +686,7 @@ cv.addEventListener('pointerdown', e => {
   if (z.kind === 'hour') return playerHour(z.n);
   /* de grote wijzer kan over een getal liggen: stil loslaten is dan een tik op dat getal, slepen draait de wijzer */
   dragging = z.kind === 'small' ? 'hour' : z.n ? 'maybe' : 'minute'; cv.setPointerCapture(e.pointerId);
-  const m = minuteAt(e); lastAngle = m; pressed = {x: e.clientX, y: e.clientY, n: z.n};
-  if (z.kind === 'ring') { S.P = S.T + wrap(m - mod(S.T, 60)); setT(false); }
+  lastAngle = minuteAt(e); pressed = {x: e.clientX, y: e.clientY, n: z.n};
 });
 cv.addEventListener('pointermove', e => {
   if (!dragging) { hover = zone(e); cv.style.cursor = hover ? (hover.kind === 'hour' ? 'pointer' : 'grab') : ''; return; }
@@ -732,7 +772,7 @@ function startRun() {
 }
 
 function nextGate() {
-  renderHud();
+  renderHud(); S.slips = [];
   if (S.gate === GATES) return endRun();
   if (BUILD.has(S.gate)) return startBuild();
   if (FROZEN.has(S.gate)) return startFrozen();
@@ -742,6 +782,7 @@ function nextGate() {
 }
 
 function passGate(now) {
+  logGate('skate', !S.slips.length);
   S.combo = now - S.gateStart < FAST ? S.combo + 1 : 1; S.best = Math.max(S.best, S.combo);
   const pts = 100 * Math.min(S.combo, 5); S.score += pts;
   const [x, y] = at(mod(S.T, 60) / 60 * Math.PI * 2, R * .8);
@@ -756,12 +797,13 @@ function endRun() {
   S.phase = 'end'; renderHud(); renderLive();
   const special = BUILD.size + FROZEN.size, stars = 1 + (S.firstTry >= special / 2) + (S.firstTry === special);
   let unlocked = '';
-  if (stars === 3 && S.level === S.unlocked && S.unlocked < LEVELS.length - 1) {
+  if (stars >= 2 && S.level === S.unlocked && S.unlocked < LEVELS.length - 1) {
     S.unlocked++; store.set('unlocked', S.unlocked); unlocked = `Nieuw niveau open: ${LEVELS[S.unlocked].name}!`;
   }
   $('#stars').innerHTML = [0, 1, 2].map(i => `<span class="${i < stars ? 'on' : ''}">★</span>`).join('');
   $('#stats').innerHTML = `<div><b>${S.score}</b><span>punten</span></div><div><b>×${Math.min(S.best, 5)}</b><span>beste reeks</span></div><div><b>${S.firstTry}/${special}</b><span>bouw- en ijspoorten in één keer</span></div>`;
-  $('#unlock').textContent = unlocked || (stars === 3 ? 'Drie sterren!' : 'Haal alle bouw- en ijspoorten in één keer voor drie sterren.');
+  $('#unlock').textContent = unlocked || (stars === 3 ? 'Drie sterren!' : stars === 2 ? 'Haal alle bouw- en ijspoorten in één keer voor drie sterren.'
+    : 'Haal de helft van de bouw- en ijspoorten in één keer, dan gaat het volgende niveau open.');
   renderLevels('#levels-end');
   $('#target').innerHTML = '';
   $('#end').hidden = false; SFX.fanfare(); cannons(40 + stars * 30);
@@ -819,6 +861,7 @@ async function read(text) {
   let res;
   try { res = await api('/read', {...clock(), text}); } catch (err) { return failed(err, () => read(text)); }
   S.attempts++;
+  if (res.dialogue) S.slips.push(...res.dialogue.steps.map(step => step.mistake));
   if (res.verdict === 'unreadable') return S.attempts >= 2 ? together(res.right) : write(`Ik kan „${esc(res.spelled)}” niet goed lezen. Probeer het nog eens?`);
   if (res.verdict === 'right' || res.verdict === 'other_words') {
     const first = S.attempts === 1;
@@ -867,7 +910,7 @@ function together(right) {
 }
 
 function thaw(points, first) {
-  S.phase = 'between';
+  logGate(S.phase === 'build' ? 'build' : 'frozen', first); S.phase = 'between';
   if (first) { S.firstTry++; S.combo++; S.best = Math.max(S.best, S.combo); popCombo(); }
   const pts = points * Math.max(1, Math.min(S.combo, 5));
   setTimeout(() => {
@@ -895,7 +938,7 @@ async function tap(block) {
   let res;
   try { res = await api('/place', {...clock(), placed: S.placed, word}); } catch (err) { return failed(err, () => tap(block)); }
   if (res.hint) {
-    S.misses++; $('#hint').textContent = res.hint; SFX.soft();
+    S.misses++; S.slips.push(res.mistake); $('#hint').textContent = res.hint; SFX.soft();
     block.classList.remove('nope'); void block.offsetWidth; block.classList.add('nope');
     return;
   }
@@ -907,6 +950,39 @@ async function tap(block) {
   panel.querySelectorAll('.tray .word').forEach(b => { b.disabled = true; });
   thaw(S.misses ? 50 : 100, !S.misses);
 }
+
+/* ---------- voor ouders: per poort welke denkfouten er waren, alleen in deze browser ---------- */
+const SLIPS = {
+  order: 'Volgorde: de minuten eerst, het uur achteraan', hour: 'Welk uur: bij voor en half het uur dat nog komt',
+  direction: 'Over of voor', anchor: 'Half of heel uur', number: 'Hoeveel minuten', '24h': 'De 24-uursklok',
+};
+const WEEK = 7 * 24 * 3600 * 1000;
+
+function logGate(kind, first) {
+  const log = store.get('log', []);
+  log.push({at: Date.now(), level: S.level, kind, first, slips: S.slips});
+  store.set('log', log.slice(-3000));
+}
+
+function report() {
+  const log = store.get('log', []), now = Date.now();
+  const week = log.filter(g => now - g.at < WEEK), before = log.filter(g => now - g.at >= WEEK && now - g.at < 2 * WEEK);
+  const count = (gates, slip) => gates.reduce((n, g) => n + g.slips.filter(s => s === slip).length, 0);
+  const slips = Object.entries(SLIPS).map(([slip, name]) => {
+    const a = count(week, slip), b = count(before, slip), trend = a > b ? 'up' : a < b ? 'down' : '';
+    return `<tr><td>${name}</td><td class="n ${trend}">${a}</td><td class="n">${b}</td></tr>`;
+  }).join('');
+  const levels = LEVELS.map((l, i) => {
+    const gates = week.filter(g => g.level === i), first = gates.filter(g => g.first).length;
+    return gates.length ? `<tr><td>${l.name}</td><td class="n">${gates.length}</td><td class="n">${Math.round(100 * first / gates.length)}%</td></tr>` : '';
+  }).join('');
+  $('#report').innerHTML = `<table class="report"><tr><th>Denkfout</th><th class="n">Deze week</th><th class="n">Week ervoor</th></tr>${slips}</table>
+    <table class="report" style="margin-top:22px"><tr><th>Niveau, deze week</th><th class="n">Poorten</th><th class="n">In één keer</th></tr>${levels || '<tr><td colspan="3">Nog niet gespeeld.</td></tr>'}</table>`;
+  $('#parents').hidden = false;
+}
+$('#open-parents').addEventListener('click', report);
+$('#close-parents').addEventListener('click', () => { $('#parents').hidden = true; });
+$('#reload').addEventListener('click', () => location.reload());
 
 /* ---------- start ---------- */
 function toggles() {

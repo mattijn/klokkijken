@@ -27,6 +27,7 @@ __all__ = [
     "place",
     "readings",
     "sentence",
+    "spelled_out",
     "steps",
     "tray",
     "twelve",
@@ -73,6 +74,7 @@ class Fit(BaseModel):
 
     role: str | None
     hint: str | None
+    mistake: Mistake | None
     done: bool
 
 
@@ -140,6 +142,16 @@ def plain(text: str) -> str:
 
 NUMBERS: dict[str, int] = {plain(number_word(n)): n for n in range(1, 60)} | {"kwart": 15}
 VALUES: dict[str, int] = {number_word(n): n for n in range(1, 60)}
+
+
+def spelled_out(text: str) -> str:
+    """The text with its numerals written as words, also when glued to a word: 4voor8 becomes vier voor acht."""
+    return re.sub(r"\d+", numeral, text)
+
+
+def numeral(match: re.Match[str]) -> str:
+    n = int(match.group())
+    return f" {number_word(n)} " if 1 <= n <= 59 else match.group()
 
 
 def parse(text: str) -> Reading | None:
@@ -340,37 +352,38 @@ def place(hour: int, minute: int, placed: list[str], word: str) -> Fit:
     for reading in fitting:
         next_word, role = words(reading)[n]
         if next_word == word:
-            return Fit(role=role, hint=None, done=len(words(reading)) == n + 1)
-    return Fit(role=None, hint=clue(hour, minute, fitting[0], words(fitting[0])[n], word), done=False)
+            return Fit(role=role, hint=None, mistake=None, done=len(words(reading)) == n + 1)
+    mistake, hint = clue(hour, minute, fitting[0], words(fitting[0])[n], word)
+    return Fit(role=None, hint=hint, mistake=mistake, done=False)
 
 
-def clue(hour: int, minute: int, reading: Reading, expected: tuple[str, str], word: str) -> str:
-    """Why `word` doesn't come next in `reading`, where `expected` does."""
+def clue(hour: int, minute: int, reading: Reading, expected: tuple[str, str], word: str) -> tuple[Mistake, str]:
+    """The thinking mistake behind `word` coming next in `reading` where `expected` does, and the rule it breaks."""
     hours = {number_word(twelve(hour)), number_word(twelve(hour + 1))}
     anchor = "de half" if reading.half else "het hele uur"
     match expected:
         case (_, "number") if word in hours:
-            return "Het uur komt achteraan. Begin met de minuten."
+            return "order", "Het uur komt achteraan. Begin met de minuten."
         case (_, "number") if minute and word == number_word(minute) and reading.direction == "voor":
-            return f"Niet {minute}: tel hoeveel minuten het nog duurt tot {anchor}."
+            return "number", f"Niet {minute}: tel hoeveel minuten het nog duurt tot {anchor}."
         case (_, "number") if minute and word == number_word(minute):
-            return f"Niet {minute}: tel hoeveel minuten het al na {anchor} is."
+            return "number", f"Niet {minute}: tel hoeveel minuten het al na {anchor} is."
         case (_, "number"):
-            return f"Begin met hoeveel minuten het is tot {anchor} of erna."
+            return "order", f"Begin met hoeveel minuten het is tot {anchor} of erna."
         case (_, "to-hour" | "to-half") if word in ("over", "voor"):
-            return f"Is {anchor} al geweest? Dan zeg je over. Komt hij nog? Dan zeg je voor."
+            return "direction", f"Is {anchor} al geweest? Dan zeg je over. Komt hij nog? Dan zeg je voor."
         case (_, "to-hour" | "to-half"):
-            return "Na de minuten komt over of voor."
+            return "order", "Na de minuten komt over of voor."
         case (_, "half"):
-            return "Je telt vanaf de half, dus nu komt het woord half."
+            return "anchor", "Je telt vanaf de half, dus nu komt het woord half."
         case ("uur", "hour"):
-            return "Bij een heel uur zeg je er uur achter."
+            return "anchor", "Bij een heel uur zeg je er uur achter."
         case (_, "hour") if word in hours and (reading.half or reading.direction == "voor"):
-            return "Bij voor en half noem je het uur dat nog komt."
+            return "hour", "Bij voor en half noem je het uur dat nog komt."
         case (_, "hour") if word in hours:
-            return "Bij over noem je het uur dat net geweest is."
+            return "hour", "Bij over noem je het uur dat net geweest is."
         case (_, "hour"):
-            return "Nu komt het uur."
+            return "order", "Nu komt het uur."
     raise ValueError(f"No clue for {expected}")
 
 

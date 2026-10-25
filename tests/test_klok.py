@@ -12,6 +12,7 @@ from klok import (
     place,
     readings,
     sentence,
+    spelled_out,
     steps,
     tray,
     words,
@@ -165,3 +166,11 @@ def test_nudges_follow_the_sentence() -> None:
     assert nudge(20, 56, 7 * 60 + 56) == "Bij voor hoort het uur dat nog komt. Tik dat uur en draai terug."
     assert nudge(20, 10, 9 * 60 + 10) == "Bij over hoort het uur dat net geweest is. Tik dat uur en draai vooruit."
     assert nudge(20, 0, 9 * 60) == "De grote wijzer staat goed. Tik nu het uur dat in de zin staat."
+
+
+@pytest.mark.parametrize(
+    ("text", "spoken"),
+    [("4voor8", "vier voor acht"), ("10 over half 9", "tien over half negen"), ("half 12", "half twaalf")],
+)
+def test_numerals_become_words(text: str, spoken: str) -> None:
+    assert parse(spelled_out(text)) == parse(spoken)

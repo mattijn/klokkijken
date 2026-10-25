@@ -62,10 +62,17 @@ def test_building_four_to_nine() -> None:
     assert post("/place", clock | {"placed": ["vier", "voor"], "word": "acht"}) == {
         "role": None,
         "hint": "Bij voor en half noem je het uur dat nog komt.",
+        "mistake": "hour",
         "done": False,
     }
     assert post("/place", clock | {"placed": ["vier", "voor"], "word": "negen"}) == {
         "role": "hour",
         "hint": None,
+        "mistake": None,
         "done": True,
     }
+
+
+def test_glued_numerals_are_read() -> None:
+    read = post("/read", {"hour": 20, "minute": 56, "text": "4voor8"})
+    assert [w for w, role in read["said"]] == ["vier", "voor", "acht"]
