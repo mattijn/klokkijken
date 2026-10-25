@@ -527,6 +527,7 @@ function frame(now) {
 }
 
 function update(dt, now) {
+  if (S.glide) glide(now);
   const before = S.disp;
   S.disp += (S.T - S.disp) * Math.min(1, dt / 45);
   const moved = S.disp - before;
@@ -738,7 +739,7 @@ function startTogether(now) {
   const hour = Math.floor(mod(S.target, 1440) / 60), n = mod(hour, 12) || 12, minute = mod(S.target, 60);
   const words = PHRASES[face(S.target)].map(([w]) => w), next = mod(hour + 1, 12) || 12;
   const ahead = words.includes('half') || words.includes('voor');
-  S.together = true; S.touched = true; S.tip = ''; S.combo = 0;
+  S.together = true; S.touched = true; S.tip = ''; S.combo = 0; S.glide = null;
   coach = {t0: now, n, sweep: minute / 60 * Math.PI * 2, base: null, step: -1, back: S.T, labels: {
     1: LEVELS[S.level].digital && hour > 12 ? `${hour} = ${n}` : `Tik de ${n}`,
     2: !LEVELS[S.level].digital && ahead ? `Nog niet de ${next}` : 'De kleine wijzer springt erheen',
@@ -842,17 +843,22 @@ cv.addEventListener('pointerdown', e => {
   S.touched = true; if (coach) stopCoach(performance.now());
   if (z.kind === 'hour') return tapNumber(z.n);
   /* de grote wijzer kan over een getal liggen: stil loslaten is dan een tik op dat getal, slepen draait de wijzer */
-  dragging = z.kind === 'small' ? 'hour' : z.n ? 'maybe' : 'minute'; cv.setPointerCapture(e.pointerId);
+  S.glide = null;
+  dragging = z.kind === 'small' ? 'hour' : z.kind === 'ring' ? 'rim' : z.n ? 'maybe' : 'minute'; cv.setPointerCapture(e.pointerId);
   lastAngle = minuteAt(e); pressed = {x: e.clientX, y: e.clientY, n: z.n};
 });
 cv.addEventListener('pointermove', e => {
   if (!dragging) { hover = zone(e); cv.style.cursor = hover ? (hover.kind === 'hour' ? 'pointer' : 'grab') : ''; return; }
-  if (dragging === 'maybe' && Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) > 8) dragging = 'minute';
-  if (dragging === 'maybe') return;
+  if ((dragging === 'maybe' || dragging === 'rim') && Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) > 8) dragging = 'minute';
+  if (dragging === 'maybe' || dragging === 'rim') return;
   if (dragging === 'hour') { const n = hourAt(e); if (n !== (mod(Math.floor(S.T / 60), 12) || 12) || mod(S.T, 60)) playerHour(n); return; }
   const m = minuteAt(e); S.P += wrap(m - lastAngle); lastAngle = m; setT(true);
 });
-cv.addEventListener('pointerup', () => { if (dragging === 'maybe') tapNumber(pressed.n); dragging = false; });
+cv.addEventListener('pointerup', e => {
+  if (dragging === 'maybe') tapNumber(pressed.n);
+  if (dragging === 'rim') tapRim(minuteAt(e));
+  dragging = false;
+});
 cv.addEventListener('pointercancel', () => { dragging = false; });
 
 /* met een toetsenbord: links en rechts draaien de grote wijzer een stap (de loep komt even in beeld), omhoog en omlaag
@@ -864,7 +870,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !$('#start').hidden && e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') return $('#go').click();
   if (S.phase !== 'skate' || !(e.key in KEYS)) return;
   e.preventDefault(); audio();
-  S.touched = true; if (coach) stopCoach(performance.now());
+  S.touched = true; S.glide = null; if (coach) stopCoach(performance.now());
   const [step, hour] = KEYS[e.key];
   if (hour) { S.usedHour = true; S.tapped = true; S.tip = ''; } else keyed = performance.now();
   S.P = S.T + step * snap() + hour; setT(true);
@@ -877,10 +883,27 @@ const bigTurn = () => S.phase === 'skate' && !coach && S.tapped
   && Math.floor(face(S.T) / 60) === Math.floor(face(S.target) / 60) && mod(S.T, 60) !== mod(S.target, 60);
 
 function tapNumber(n) {
+  S.glide = null;
   if (!bigTurn()) return playerHour(n);
   S.P = Math.floor(S.T / 60) * 60 + n % 12 * 5; setT(true);
   const [x, y] = at(n / 12 * Math.PI * 2, R * .74);
   rings.push({x, y, r: 10, life: 1});
+}
+
+/* een tik in de rand: de grote wijzer schaatst er rustig heen binnen het uur dat staat, en de kleine wijzer schuift zichtbaar mee */
+function tapRim(m) {
+  const step = snap(), to = Math.floor(S.T / 60) * 60 + mod(Math.round(m / step) * step, 60);
+  if (to === S.T) return;
+  const dur = 500 + Math.abs(to - S.T) * 28, now = performance.now();
+  S.glide = {from: S.T, to, t0: now, dur}; keyed = now + dur;
+  const [x, y] = at(mod(to, 60) / 60 * Math.PI * 2, R * .93);
+  rings.push({x, y, r: 8, life: 1});
+}
+
+function glide(now) {
+  const p = Math.min(1, (now - S.glide.t0) / S.glide.dur);
+  S.P = Math.round(S.glide.from + (S.glide.to - S.glide.from) * ease(p)); setT(false, 1);
+  if (p === 1) S.glide = null;
 }
 
 function setHour(n) {
@@ -890,12 +913,12 @@ function setHour(n) {
   rings.push({x, y, r: 10, life: 1}); SFX.hop();
 }
 
-function setT(dragged) {
-  const step = snap(), t = Math.round(S.P / step) * step, hop = Math.floor(t / 60) - Math.floor(S.T / 60);
+function setT(dragged, step = snap()) {
+  const t = Math.round(S.P / step) * step, hop = Math.floor(t / 60) - Math.floor(S.T / 60);
   if (t === S.T) return;
   if (dragged && !coach) S.spun += Math.abs(t - S.T);
   if (S.spun > 120 && !S.usedHour && !S.tip) S.tip = 'Tik op een getal';
-  S.T = t; S.nudgeSince = 0; S.nudged = false; S.point = 0; SFX.tick(mod(t, 60) / step % 4); renderLive();
+  S.T = t; S.nudgeSince = 0; S.nudged = false; S.point = 0; if (mod(t, snap()) === 0) SFX.tick(mod(t, 60) / snap() % 4); renderLive();
   if (!dragged || !hop) return;
   const h = mod(Math.floor(t / 60), 12) || 12, [x, y] = at(mod(t / 60, 12) / 12 * Math.PI * 2, R * .5);
   floatText(x, y - 34, hop < 0 ? `‹ ${h}` : `${h} ›`, '#FFD34E');
@@ -980,7 +1003,7 @@ function stopRun() {
 
 function nextGate() {
   if (S.phase === 'start') return;
-  renderHud(); S.slips = []; S.example = null; S.together = false; S.tapped = false; S.offer = false;
+  renderHud(); S.slips = []; S.example = null; S.together = false; S.tapped = false; S.offer = false; S.glide = null;
   if (S.gate === S.gates) return endRun();
   if (BUILD.has(S.gate)) return startBuild();
   if (FROZEN.has(S.gate)) return startFrozen();

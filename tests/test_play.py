@@ -499,3 +499,19 @@ def test_all_gold_is_a_champion(chromium: Browser, url: str) -> None:
     page.wait_for_function("S.phase === 'start'", timeout=5000)
     assert page.locator("#start").is_visible()
     assert errors == []
+
+
+def test_tapping_the_rim_skates_the_big_hand_there(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 2)
+    page.evaluate("S.target = 7 * 60 + 45; renderTarget(); S.P = 3 * 60; setT(false)")
+    page.mouse.click(*point(page, 44 / 60 * 2 * math.pi, 0.93))
+    page.wait_for_function("S.T > 3 * 60 && S.T < 3 * 60 + 45")
+    page.wait_for_function("S.T === 3 * 60 + 45 && S.glide === null")
+    page.mouse.move(*point(page, 45 / 60 * 2 * math.pi, 0.93))
+    page.mouse.down()
+    for m in range(46, 61):
+        page.mouse.move(*point(page, m / 60 * 2 * math.pi, 0.93))
+    page.mouse.up()
+    assert page.evaluate("S.T") == 4 * 60
+    assert errors == []
