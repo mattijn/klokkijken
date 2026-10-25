@@ -402,7 +402,7 @@ function skater(x, y, s, color, phase, speed, dir) {
 let lastT = performance.now(), speed = 0, phase = 0, hourPhase = 0, dir = 1, prevTip = null, hourHop = 0;
 
 function frame(now) {
-  const dt = Math.min(50, now - lastT); lastT = now;
+  const dt = Math.max(1, Math.min(50, now - lastT)); lastT = now;
   geometry(false);
   const frozenTime = now < stopUntil;
   if (!frozenTime) update(dt, now);
@@ -525,9 +525,9 @@ function highlight(now) {
   ctx.globalAlpha = S.tip ? .45 + .45 * Math.sin(now / 220) : .22;
   for (let n = 1; n <= 12; n++) { const [x, y] = at(n / 12 * Math.PI * 2, R * .74); ctx.beginPath(); ctx.arc(x, y, R * .1, 0, Math.PI * 2); ctx.stroke(); }
   ctx.restore();
-  if (!hover || dragging || hover.kind === 'hand' || hover.kind === 'small') return;
+  if (!hover || dragging || hover.kind === 'small' || (hover.kind === 'hand' && !hover.n)) return;
   ctx.save();
-  if (hover.kind === 'hour') {
+  if (hover.n) {
     const [x, y] = at(hover.n / 12 * Math.PI * 2, R * .74);
     ctx.fillStyle = 'rgba(255,211,78,.22)'; ctx.strokeStyle = 'rgba(255,211,78,.8)'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(x, y, R * .11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -618,19 +618,20 @@ function hints(now) {
 }
 
 /* ---------- slepen ---------- */
-let dragging = false, lastAngle = 0, hover = null, coach = null;
+let dragging = false, lastAngle = 0, hover = null, coach = null, pressed = null;
 const minuteAt = e => { const a = Math.atan2(e.clientX - CX, -(e.clientY - CY)); return mod(a / (Math.PI * 2) * 60, 60); };
 const wrap = d => mod(d + 30, 60) - 30;
 const snap = () => LEVELS[S.level].digital ? 1 : 5;
 
 /* de getallen zijn de uren: tikken zet de kleine wijzer; de buitenrand en de grote wijzer zelf draaien de minuten */
 const hourAt = e => mod(Math.round(minuteAt(e) / 5), 12) || 12;
+const onNumber = e => { const n = hourAt(e), [x, y] = at(n / 12 * Math.PI * 2, R * .74); return Math.hypot(e.clientX - x, e.clientY - y) < R * .1 ? n : 0; };
 
 function zone(e) {
   const r = Math.hypot(e.clientX - CX, e.clientY - CY), near = ([x, y]) => Math.hypot(e.clientX - x, e.clientY - y) < R * .16;
   if (S.phase !== 'skate' || r > R * 1.4) return null;
   if (r > R * .86) return {kind: 'ring'};
-  if (near(at(mod(S.disp, 60) / 60 * Math.PI * 2, R * .8))) return {kind: 'hand'};
+  if (near(at(mod(S.disp, 60) / 60 * Math.PI * 2, R * .8))) return {kind: 'hand', n: onNumber(e)};
   if (near(at(mod(S.disp / 60, 12) / 12 * Math.PI * 2, R * .5))) return {kind: 'small'};
   if (r > R * .58) return {kind: 'hour', n: hourAt(e)};
   return {kind: 'hand'};
@@ -642,16 +643,20 @@ cv.addEventListener('pointerdown', e => {
   if (!z) return;
   S.touched = true; if (coach) stopCoach(performance.now());
   if (z.kind === 'hour') return playerHour(z.n);
-  dragging = z.kind === 'small' ? 'hour' : 'minute'; cv.setPointerCapture(e.pointerId);
-  const m = minuteAt(e); lastAngle = m;
+  /* de grote wijzer kan over een getal liggen: stil loslaten is dan een tik op dat getal, slepen draait de wijzer */
+  dragging = z.kind === 'small' ? 'hour' : z.n ? 'maybe' : 'minute'; cv.setPointerCapture(e.pointerId);
+  const m = minuteAt(e); lastAngle = m; pressed = {x: e.clientX, y: e.clientY, n: z.n};
   if (z.kind === 'ring') { S.P = S.T + wrap(m - mod(S.T, 60)); setT(false); }
 });
 cv.addEventListener('pointermove', e => {
   if (!dragging) { hover = zone(e); cv.style.cursor = hover ? (hover.kind === 'hour' ? 'pointer' : 'grab') : ''; return; }
+  if (dragging === 'maybe' && Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) > 8) dragging = 'minute';
+  if (dragging === 'maybe') return;
   if (dragging === 'hour') { const n = hourAt(e); if (n !== (mod(Math.floor(S.T / 60), 12) || 12) || mod(S.T, 60)) playerHour(n); return; }
   const m = minuteAt(e); S.P += wrap(m - lastAngle); lastAngle = m; setT(true);
 });
-for (const ev of ['pointerup', 'pointercancel']) cv.addEventListener(ev, () => { dragging = false; });
+cv.addEventListener('pointerup', () => { if (dragging === 'maybe') playerHour(pressed.n); dragging = false; });
+cv.addEventListener('pointercancel', () => { dragging = false; });
 
 function playerHour(n) { S.usedHour = true; S.tip = ''; setHour(n); }
 
