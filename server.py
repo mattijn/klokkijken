@@ -15,7 +15,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
 import tutor
-from klok import Reading, Step, judge, parse, place, readings, sentence, steps, tray, words
+from klok import VALUES, Reading, Step, judge, parse, place, readings, sentence, steps, tray, words
 
 __all__ = ["app"]
 
@@ -112,9 +112,9 @@ async def answer_step(request: Request) -> JSONResponse:
 
 
 async def build(request: Request) -> JSONResponse:
-    """The blocks to build the time's sentence from."""
+    """The blocks to build the time's sentence from, each number with its digit."""
     clock = Clock.model_validate(await request.json())
-    return JSONResponse({"tray": tray(clock.hour, clock.minute)})
+    return JSONResponse({"tray": [[word, VALUES.get(word)] for word in tray(clock.hour, clock.minute)]})
 
 
 async def place_word(request: Request) -> JSONResponse:

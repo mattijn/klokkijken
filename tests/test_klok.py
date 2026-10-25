@@ -1,6 +1,20 @@
 import pytest
 
-from klok import Reading, judge, minutes, mistakes, number_word, parse, place, readings, sentence, steps, tray, words
+from klok import (
+    Reading,
+    alike,
+    judge,
+    minutes,
+    mistakes,
+    number_word,
+    parse,
+    place,
+    readings,
+    sentence,
+    steps,
+    tray,
+    words,
+)
 
 
 def said(text: str) -> Reading:
@@ -113,6 +127,7 @@ def test_every_sentence_builds_from_its_tray() -> None:
         hour, minute = t // 60, t % 60
         blocks = tray(hour, minute)
         right = [word for word, role in words(readings(hour, minute)[0])]
+        assert 1 <= len(blocks) - len(right) <= 2
         for n, word in enumerate(right):
             for block in set(blocks) - {word}:
                 fits = any([w for w, role in words(r)][: n + 1] == right[:n] + [block] for r in readings(hour, minute))
@@ -121,3 +136,19 @@ def test_every_sentence_builds_from_its_tray() -> None:
             assert (fit.hint, fit.done) == (None, n + 1 == len(right))
             blocks.remove(word)
         assert blocks
+
+
+def test_no_lookalike_blocks() -> None:
+    for t in range(720):
+        hour, minute = t // 60, t % 60
+        right = [word for word, role in words(readings(hour, minute)[0])]
+        blocks = tray(hour, minute)
+        for word in right:
+            blocks.remove(word)
+        assert not any(alike(block, word) for block in blocks for word in right)
+
+
+def test_lookalikes() -> None:
+    assert alike("acht", "achttien")
+    assert alike("één", "twaalf")
+    assert not alike("acht", "negen")

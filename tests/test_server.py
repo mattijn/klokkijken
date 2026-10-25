@@ -48,7 +48,13 @@ def test_words_that_are_no_time() -> None:
 
 def test_building_four_to_nine() -> None:
     clock = {"hour": 20, "minute": 56}
-    assert post("/build", clock)["tray"] == ["acht", "negen", "over", "vier", "voor", "zesenvijftig"]
+    assert post("/build", clock)["tray"] == [
+        ["vier", 4],
+        ["acht", 8],
+        ["negen", 9],
+        ["zesenvijftig", 56],
+        ["voor", None],
+    ]
     assert (
         post("/place", clock | {"placed": [], "word": "negen"})["hint"]
         == "Het uur komt achteraan. Begin met de minuten."

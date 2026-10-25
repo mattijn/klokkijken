@@ -11,11 +11,13 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 __all__ = [
+    "VALUES",
     "Fit",
     "Mistake",
     "Reading",
     "Step",
     "Verdict",
+    "alike",
     "judge",
     "minutes",
     "mistakes",
@@ -136,6 +138,7 @@ def plain(text: str) -> str:
 
 
 NUMBERS: dict[str, int] = {plain(number_word(n)): n for n in range(1, 60)} | {"kwart": 15}
+VALUES: dict[str, int] = {number_word(n): n for n in range(1, 60)}
 
 
 def parse(text: str) -> Reading | None:
@@ -302,18 +305,29 @@ def steps(hour: int, minute: int, reading: Reading) -> list[Step]:
 
 
 def tray(hour: int, minute: int) -> list[str]:
-    """The blocks to build the sentence from: its words and the words a child mixes them up with."""
+    """The blocks to build the sentence from: its words and two that show a thinking mistake, numbers first."""
     reading = readings(hour, minute)[0]
     right = [word for word, role in words(reading)]
     other_hour = twelve(hour + 1) if reading.hour == twelve(hour) else twelve(hour)
     tempting = [number_word(other_hour)]
-    if reading.direction != "none":
-        tempting.append({"over": "voor", "voor": "over"}[reading.direction])
     if minute and reading.number != minute:
         tempting.append(number_word(minute))
-    if reading.direction == "none":
+    if reading.direction != "none":
+        tempting.append({"over": "voor", "voor": "over"}[reading.direction])
+    else:
         tempting.append("uur" if reading.half else "half")
-    return sorted(right + [word for word in tempting if word not in right])
+    clear = [word for word in tempting if word not in right and not any(alike(word, r) for r in right)]
+    return sorted(right + clear[:2], key=reading_order)
+
+
+def alike(a: str, b: str) -> bool:
+    """Blocks a child easily takes for each other: one written inside the other, as acht in achttien or 1 in 12."""
+    forms = [(a, b)] + ([(str(VALUES[a]), str(VALUES[b]))] if a in VALUES and b in VALUES else [])
+    return a != b and any(x in y or y in x for x, y in forms)
+
+
+def reading_order(word: str) -> tuple[bool, int, str]:
+    return word not in VALUES, VALUES.get(word, 0), word
 
 
 def place(hour: int, minute: int, placed: list[str], word: str) -> Fit:
