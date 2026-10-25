@@ -1,4 +1,4 @@
-"""Build the school version into `_site`: the same page with the rules running in the browser, for GitHub Pages."""
+"""Build the school version into `_site`: the same page with the rules running in the browser and its share image, for GitHub Pages."""
 
 import shutil
 from pathlib import Path
@@ -17,6 +17,7 @@ def main() -> None:
     (SITE / "index.html").write_text(page.replace(SERVER, '<meta name="engine" content="browser">'))
     for module in ["klok.py", "play.py"]:
         shutil.copy(ROOT / module, SITE / module)
+    shutil.copy(ROOT / "static" / "og.jpg", SITE / "og.jpg")
 
 
 if __name__ == "__main__":
