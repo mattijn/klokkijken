@@ -143,7 +143,7 @@ def test_the_parent_report_counts_the_gates(chromium: Browser, url: str) -> None
     page, errors = open_game(chromium, url)
     play_round(page, 0)
     page.evaluate("report()")
-    assert "Hele uren" in page.inner_text("#report")
+    assert "Hele uren" in str(page.text_content("#report"))
     assert page.evaluate("store.get('log', []).length") == 10
     assert errors == []
 
@@ -158,6 +158,87 @@ def test_starting_over_clears_everything(chromium: Browser, url: str) -> None:
     page.wait_for_function("PHRASES.length === 720")
     assert page.evaluate("Object.keys(localStorage).filter(k => k.startsWith('ijsbaan.'))") == []
     assert page.evaluate("[S.level, S.unlocked]") == [0, 0]
+    assert errors == []
+
+
+def start_level(page: Page, level: int) -> None:
+    page.evaluate(f"S.unlocked = {level}; S.level = {level}; renderLevels('#levels')")
+    page.click("#go")
+    page.wait_for_function("S.phase === 'skate'")
+
+
+def tap_number(page: Page, n: int) -> None:
+    page.mouse.click(*point(page, n / 12 * 2 * math.pi, 0.74))
+
+
+def test_half_by_tapping_the_hour_then_the_six(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 1)
+    page.evaluate("S.target = 8 * 60 + 30; renderTarget()")
+    tap_number(page, 8)
+    assert "Nu de grote wijzer" in page.inner_text("#live")
+    tap_number(page, 6)
+    page.wait_for_function("S.gate === 1")
+    assert errors == []
+
+
+def test_a_wrong_hour_keeps_taps_on_the_hour(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 1)
+    page.evaluate("S.target = 8 * 60 + 30; renderTarget()")
+    tap_number(page, 9)
+    tap_number(page, 6)
+    assert page.evaluate("face(S.T)") == 6 * 60
+    assert errors == []
+
+
+def test_skating_together_then_alone(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 2)
+    page.evaluate("S.offer = true; renderLive()")
+    back = page.evaluate("S.T")
+    page.click("#samen")
+    page.wait_for_function("coach !== null && face(S.T) === face(S.target)", timeout=8000)
+    page.wait_for_function("coach === null", timeout=12000)
+    assert page.evaluate("[S.T, S.gate]") == [back, 0]
+    assert "Nu jij!" in page.inner_text("#live")
+    skate(page)
+    page.wait_for_function("S.gate === 1")
+    entry = page.evaluate("store.get('log').at(-1)")
+    assert (entry["together"], entry["first"]) == (True, False)
+    assert page.evaluate("S.again.map(a => a.gate)") == [2]
+    assert errors == []
+
+
+def test_writing_nothing_builds_it_together(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 4)
+    page.evaluate("S.gate = 4; S.T = 15 * 60; nextGate()")
+    page.wait_for_selector("#answer")
+    page.evaluate("S.target = 18 * 60 + 37")
+    page.press("#answer", "Enter")
+    page.click(".choices .btn:text-is('6')")
+    page.wait_for_selector(".tray .word")
+    assert "zeven over half zeven" in page.inner_text(".ghost-line").replace("\n", " ")
+    build(page)
+    page.wait_for_function("S.gate === 5")
+    entry = page.evaluate("store.get('log').at(-1)")
+    assert (entry["kind"], entry["together"], entry["first"]) == ("frozen", True, False)
+    assert page.evaluate("[S.again.length, S.gates]") == [1, 10]
+    assert errors == []
+
+
+def test_the_report_names_one_thing_to_work_on(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    page.evaluate("""store.set('log', [0, 1, 2].map(i => ({at: Date.now(), level: 3, kind: 'frozen', first: false, together: false,
+      slips: ['hour'], target: 'vier voor negen', right: 'vier voor negen',
+      example: {mistake: 'hour', how: 'geschreven', what: 'vier voor acht'}})))""")
+    page.evaluate("report()")
+    text = page.inner_text("#report")
+    assert "Dit gaat nog vaak mis" in text
+    assert "✗\nvier voor acht\n✓\nvier voor negen" in text
+    assert "Welk uur komt eraan?" in text
+    assert page.evaluate("focus()") == "hour"
     assert errors == []
 
 

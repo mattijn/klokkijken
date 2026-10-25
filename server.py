@@ -15,7 +15,22 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
 import tutor
-from klok import VALUES, Reading, Step, judge, nudge, parse, place, readings, sentence, spelled_out, steps, tray, words
+from klok import (
+    VALUES,
+    Reading,
+    Step,
+    judge,
+    nudge,
+    parse,
+    place,
+    readings,
+    sentence,
+    spelled_out,
+    steps,
+    together,
+    tray,
+    words,
+)
 
 __all__ = ["app"]
 
@@ -36,6 +51,11 @@ class Placing(Clock):
 
 class Position(Clock):
     at: int
+    digital: bool
+
+
+class Face(Clock):
+    digital: bool
 
 
 class Answer(Clock):
@@ -134,7 +154,14 @@ async def place_word(request: Request) -> JSONResponse:
 async def hint(request: Request) -> JSONResponse:
     """The rule to remember when the clock has the right minutes on the wrong hour."""
     position = Position.model_validate(await request.json())
-    return JSONResponse({"nudge": nudge(position.hour, position.minute, position.at)})
+    found = nudge(position.hour, position.minute, position.at, position.digital)
+    return JSONResponse({"nudge": found.model_dump() if found else None})
+
+
+async def start_together(request: Request) -> JSONResponse:
+    """The questions before the child and the coach build the sentence together."""
+    face = Face.model_validate(await request.json())
+    return JSONResponse({"steps": [step.model_dump() for step in together(face.hour, face.digital)]})
 
 
 app = Starlette(
@@ -147,6 +174,7 @@ app = Starlette(
         Route("/build", build, methods=["POST"]),
         Route("/place", place_word, methods=["POST"]),
         Route("/nudge", hint, methods=["POST"]),
+        Route("/together", start_together, methods=["POST"]),
     ]
 )
 

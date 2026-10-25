@@ -14,6 +14,7 @@ __all__ = [
     "VALUES",
     "Fit",
     "Mistake",
+    "Nudge",
     "Reading",
     "Step",
     "Verdict",
@@ -29,6 +30,7 @@ __all__ = [
     "sentence",
     "spelled_out",
     "steps",
+    "together",
     "tray",
     "twelve",
     "words",
@@ -76,6 +78,13 @@ class Fit(BaseModel):
     hint: str | None
     mistake: Mistake | None
     done: bool
+
+
+class Nudge(BaseModel):
+    """The rule to remember when the clock has the right minutes on the wrong hour, and the mistake behind it."""
+
+    mistake: Mistake
+    text: str
 
 
 def twelve(hour: int) -> int:
@@ -231,16 +240,7 @@ def steps(hour: int, minute: int, reading: Reading) -> list[Step]:
     for mistake in found:
         match mistake:
             case "24h":
-                options = sorted({twelve(reading.hour), reading.hour, reading.hour - 10})
-                out.append(
-                    Step(
-                        mistake=mistake,
-                        ask=f"Op de wijzerklok heet {reading.hour} anders. Welk getal is het daar?",
-                        options=[str(o) for o in options],
-                        answer=str(twelve(reading.hour)),
-                        hint=f"Tel verder na de 12: 13 is 1, 14 is 2, en zo door tot {reading.hour}.",
-                    )
-                )
+                out.append(twenty_four(reading.hour, [twelve(reading.hour), reading.hour, reading.hour - 10]))
             case "order":
                 out.append(
                     Step(
@@ -317,6 +317,24 @@ def steps(hour: int, minute: int, reading: Reading) -> list[Step]:
     return out
 
 
+def twenty_four(hour: int, options: list[int]) -> Step:
+    """Which number `hour` is on the clock face, asked with `options`."""
+    return Step(
+        mistake="24h",
+        ask=f"Welk getal is {hour} op de klok?",
+        options=[str(o) for o in sorted(set(options))],
+        answer=str(twelve(hour)),
+        hint=f"Zoek {hour} bij de kleine getallen.",
+    )
+
+
+def together(hour: int, digital: bool) -> list[Step]:
+    """The questions before building the sentence together: on the digital clock first which number the hour is."""
+    if not digital or hour <= 12:
+        return []
+    return [twenty_four(hour, [twelve(hour - 1), twelve(hour), twelve(hour + 1)])]
+
+
 def tray(hour: int, minute: int) -> list[str]:
     """The blocks to build the sentence from: its words and two that show a thinking mistake, numbers first."""
     reading = readings(hour, minute)[0]
@@ -387,13 +405,14 @@ def clue(hour: int, minute: int, reading: Reading, expected: tuple[str, str], wo
     raise ValueError(f"No clue for {expected}")
 
 
-def nudge(hour: int, minute: int, at: int) -> str | None:
+def nudge(hour: int, minute: int, at: int, digital: bool) -> Nudge | None:
     """The rule to remember when the clock, at `at` minutes past twelve, has the right minutes on the wrong hour."""
     if at % 60 != minute or at % 720 == hour % 12 * 60 + minute:
         return None
+    now = twelve(hour)
+    if digital and hour > 12:
+        return Nudge(mistake="24h", text=f"{hour} = {now}")
     reading = readings(hour, minute)[0]
-    if reading.half or reading.direction == "voor":
-        return f"Bij {'half' if reading.half else 'voor'} hoort het uur dat nog komt. Tik dat uur en draai terug."
-    if reading.direction == "over":
-        return "Bij over hoort het uur dat net geweest is. Tik dat uur en draai vooruit."
-    return "De grote wijzer staat goed. Tik nu het uur dat in de zin staat."
+    if not digital and (reading.half or reading.direction == "voor"):
+        return Nudge(mistake="hour", text=f"Nog niet de {reading.hour}. Tik de {now}.")
+    return Nudge(mistake="hour", text=f"Tik de {now}.")

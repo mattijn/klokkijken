@@ -56,6 +56,8 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .live.spot .blocks{animation:spot 1s ease-in-out infinite}
 @keyframes spot{50%{transform:scale(1.08);filter:drop-shadow(0 0 12px rgba(255,211,78,.8))}}
 .live .nudge{font:700 clamp(15px,2vw,19px)/1.3 var(--f-main);color:var(--gold);text-align:center;max-width:46ch}
+.live .samen{pointer-events:auto;font-size:17px;padding:11px 18px;border-radius:999px}
+.panel .ghost-line{opacity:.45;margin:0 0 6px}
 
 .panel{position:fixed;left:50%;bottom:max(16px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(660px,calc(100% - 28px));z-index:6;
   background:rgba(22,10,54,.94);border:1.5px solid rgba(160,230,255,.55);border-radius:26px;padding:22px;box-shadow:0 0 50px rgba(120,210,255,.18);
@@ -107,6 +109,15 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .report th{color:var(--mute);font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase}
 .report .n{text-align:right;font-variant-numeric:tabular-nums}
 .report .up{color:var(--pink)}.report .down{color:var(--cyan)}
+.focus{text-align:left;display:grid;gap:10px;width:100%}
+.focus h3{font:800 20px/1.2 var(--f-main);margin:14px 0 0;color:var(--gold)}
+.card .focus p{max-width:none;font-size:18px;color:#fff}
+.progress{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.progress li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:18px}
+.progress .ok{color:var(--cyan)}.progress .almost{color:var(--gold)}.progress .hard{color:var(--pink)}.progress .none{color:var(--mute)}
+.said{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:20px;font-weight:700}
+.said .no{color:var(--pink)}.said .yes{color:var(--cyan)}
+.card p.small{font-size:13px;color:var(--mute)}
 .card{text-align:center;max-width:720px;display:grid;gap:18px;justify-items:center}
 .title{font:400 clamp(46px,10vw,118px)/1 var(--f-neon);color:var(--pink);text-shadow:0 0 .1em rgba(255,79,179,.8),0 0 .4em rgba(255,79,179,.35);margin:0}
 .card p{margin:0;color:var(--lilac);font-size:clamp(17px,2.2vw,21px);max-width:46ch}
@@ -162,11 +173,11 @@ body.calm *{animation:none!important;transition:none!important}
 
 <div class="overlay" id="parents" hidden>
   <div class="card wide">
-    <h2 class="sub-title">Voor ouders</h2>
-    <p>Welke denkfouten komen voor, deze week tegenover de week ervoor. Alles blijft in deze browser.</p>
+    <h2 class="sub-title">Hoe gaat het klokkijken?</h2>
     <div id="report"></div>
     <div class="choices"><button class="btn primary" id="close-parents" type="button">Terug</button>
       <button class="btn ghost" id="reset" type="button">Opnieuw beginnen</button></div>
+    <p class="small">Dit overzicht staat alleen op dit apparaat.</p>
   </div>
 </div>
 
@@ -207,7 +218,7 @@ const LEVELS = [
   {name: 'Rond de half', minutes: Array.from({length: 12}, (_, i) => i * 5)},
   {name: 'Digitaal', minutes: Array.from({length: 60}, (_, i) => i), digital: true},
 ];
-const GATES = 10, BUILD = new Set([2, 7]), FROZEN = new Set([4, 9]), START = 18 * 60, REACH = 240, HOLD = 350, FAST = 9000;
+const GATES = 10, AGAIN = 2, BUILD = new Set([2, 7]), FROZEN = new Set([4, 9]), START = 18 * 60, REACH = 240, HOLD = 350, FAST = 9000;
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem('ijsbaan.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -215,7 +226,7 @@ const store = {
 };
 const S = {
   phase: 'start', level: Math.min(store.get('level', 0), LEVELS.length - 1), unlocked: Math.min(store.get('unlocked', 0), LEVELS.length - 1),
-  T: START, P: START, disp: START, target: START, gate: 0, score: 0, combo: 0, best: 0, firstTry: 0, coachEnd: 0,
+  T: START, P: START, disp: START, target: START, gate: 0, gates: GATES, again: [], score: 0, combo: 0, best: 0, firstTry: 0, coachEnd: 0,
   gateStart: 0, holdSince: 0, attempts: 0, sound: store.get('sound', true),
   calm: store.get('calm', matchMedia('(prefers-reduced-motion: reduce)').matches),
 };
@@ -497,6 +508,7 @@ function update(dt, now) {
       if (now - S.nudgeSince > 1200 && !S.nudged) nudge();
     }
     if (!S.touched && now - Math.max(S.gateStart, S.coachEnd) > 8000) startCoach(now);
+    if (!S.offer && now - S.gateStart > 5000) { S.offer = true; renderLive(); }
   }
 }
 
@@ -517,6 +529,7 @@ function draw(now) {
   ctx.drawImage(rinkC, CX - o, CY - o, 2 * o, 2 * o);
   ctx.drawImage(scratchC, CX - o, CY - o, 2 * o, 2 * o);
 
+  if (LEVELS[S.level].digital || S.phase === 'frozen') ring24();
   if (S.phase === 'skate') { hints(now); highlight(now); }
 
   const ha = mod(S.disp / 60, 12) / 12 * Math.PI * 2, ma = mod(S.disp, 60) / 60 * Math.PI * 2;
@@ -530,6 +543,10 @@ function draw(now) {
   const hs = R / 210 * (1 + hourHop * .5);
   skater(htip[0], htip[1] - hourHop * 14, hs * .8, '#FFD34E', hourPhase, .4 + Math.sin(hourPhase) * .2, Math.cos(ha) >= 0 ? 1 : -1);
   skater(mtip[0], mtip[1], R / 210 * 1.15, '#E8FBFF', phase, speed, Math.cos(ma) * dir >= 0 ? 1 : -1);
+  if (bigTurn()) {
+    ctx.save(); ctx.strokeStyle = '#FFD34E'; ctx.lineWidth = 3; ctx.globalAlpha = .5 + .5 * Math.sin(now / 220);
+    ctx.beginPath(); ctx.arc(...mtip, Math.max(22, R * .12), 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
   if (coach) drawCoach(now);
 
   for (const r of rings) { ctx.strokeStyle = `rgba(255,255,255,${r.life * .8})`; ctx.lineWidth = 4 * r.life; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke(); }
@@ -560,11 +577,24 @@ function draw(now) {
   }
 }
 
+/* bij digitaal staan de uren na de middag binnenin, zoals op een schoolklok */
+function ring24() {
+  ctx.save(); ctx.fillStyle = 'rgba(205,187,255,.8)'; ctx.font = `700 ${Math.round(R * .075)}px Syne, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let n = 1; n <= 12; n++) ctx.fillText(n + 12, ...at(n / 12 * Math.PI * 2, R * .6));
+  ctx.restore();
+}
+
 function highlight(now) {
   ctx.save();
   ctx.strokeStyle = '#FFD34E'; ctx.lineWidth = 2;
   ctx.globalAlpha = S.tip ? .45 + .45 * Math.sin(now / 220) : .22;
   for (let n = 1; n <= 12; n++) { const [x, y] = at(n / 12 * Math.PI * 2, R * .74); ctx.beginPath(); ctx.arc(x, y, R * .1, 0, Math.PI * 2); ctx.stroke(); }
+  if (S.point) {
+    const [x, y] = at(S.point / 12 * Math.PI * 2, R * .74);
+    ctx.globalAlpha = .6 + .4 * Math.sin(now / 200); ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(x, y, R * .13, 0, Math.PI * 2); ctx.stroke();
+    if (LEVELS[S.level].digital) { ctx.beginPath(); ctx.arc(...at(S.point / 12 * Math.PI * 2, R * .6), R * .065, 0, Math.PI * 2); ctx.stroke(); }
+  }
   ctx.restore();
   if (!hover || dragging || hover.kind === 'small' || (hover.kind === 'hand' && !hover.n)) return;
   ctx.save();
@@ -594,17 +624,36 @@ const ease = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
 const towards = (a, b, p) => [a[0] + (b[0] - a[0]) * ease(p), a[1] + (b[1] - a[1]) * ease(p)];
 
 function startCoach(now) {
-  coach = {t0: now, n: mod(Math.floor(S.target / 60) + 6, 12) || 12, base: null, step: -1};
+  coach = {t0: now, n: mod(Math.floor(S.target / 60) + 6, 12) || 12, sweep: Math.PI * .7, base: null, step: -1, labels: {}};
   store.set('coached', true);
   coachStep(now);
 }
 
-function stopCoach(now) { coach = null; S.coachEnd = now; $('#live').classList.remove('spot'); renderLive(); }
+/* samen doen: de spookhand zet de echte tijd en zegt de regel erbij, daarna gaat de klok terug en doe jij het */
+function startTogether(now) {
+  const hour = Math.floor(mod(S.target, 1440) / 60), n = mod(hour, 12) || 12, minute = mod(S.target, 60);
+  const words = PHRASES[face(S.target)].map(([w]) => w), next = mod(hour + 1, 12) || 12;
+  const ahead = words.includes('half') || words.includes('voor');
+  S.together = true; S.touched = true; S.tip = ''; S.combo = 0;
+  coach = {t0: now, n, sweep: minute / 60 * Math.PI * 2, base: null, step: -1, back: S.T, labels: {
+    1: LEVELS[S.level].digital && hour > 12 ? `${hour} = ${n}` : `Tik de ${n}`,
+    2: !LEVELS[S.level].digital && ahead ? `Nog niet de ${next}` : 'De kleine wijzer springt erheen',
+    6: 'Zie je? Hetzelfde!',
+  }};
+  renderLive(); coachStep(now);
+}
+
+function stopCoach(now) {
+  const back = coach.back;
+  coach = null; S.coachEnd = now; $('#live').classList.remove('spot');
+  if (back !== undefined) { S.P = back; setT(false); S.tip = 'Nu jij!'; S.tapped = false; }
+  renderLive();
+}
 
 function coachStep(now) {
   const t = now - coach.t0, step = COACH.findIndex(c => t < c.until);
   if (step < 0 || S.phase !== 'skate') return stopCoach(now);
-  const num = at(coach.n / 12 * Math.PI * 2, R * .74), top = at(0, R * .92), sweep = Math.PI * .7;
+  const num = at(coach.n / 12 * Math.PI * 2, R * .74), top = at(0, R * .92), sweep = coach.sweep;
   const words = $('#live .blocks').getBoundingClientRect(), live = [words.left - 34, words.top + words.height / 2];
   const from = step ? COACH[step - 1].until : 0, p = (t - from) / (COACH[step].until - from);
   if (coach.base === null && t >= 900) { setHour(coach.n); coach.base = S.T; }
@@ -612,7 +661,7 @@ function coachStep(now) {
   $('#live').classList.toggle('spot', step >= 5 && step <= 6);
   coach.pos = [towards([CX, CY + R * 1.2], num, p), num, num, towards(num, top, p), at(ease(p) * sweep, R * .92),
     towards(at(sweep, R * .92), live, p), live, live][step];
-  coach.label = COACH[step].label; coach.fade = step === 7 ? 1 - p : 1; coach.pulse = step === 1 ? p : 0; coach.small = step === 2;
+  coach.label = coach.labels[step] ?? COACH[step].label; coach.fade = step === 7 ? 1 - p : 1; coach.pulse = step === 1 ? p : 0; coach.small = step === 2;
   if (step !== coach.step) {
     coach.step = step;
     if (COACH[step].below) $('#live .lbl').textContent = coach.label;
@@ -640,10 +689,11 @@ function drawCoach(now) {
 
 async function nudge() {
   S.nudged = true;
-  const {nudge: text} = await api('/nudge', {...clock(), at: face(S.T)});
-  if (!text || S.phase !== 'skate' || !S.nudgeSince) return;
-  S.slips.push('hour');
-  $('#live').insertAdjacentHTML('beforeend', `<span class="nudge">${esc(text)}</span>`);
+  const {nudge: found} = await api('/nudge', {...clock(), at: face(S.T), digital: !!LEVELS[S.level].digital});
+  if (!found || S.phase !== 'skate' || !S.nudgeSince) return;
+  slip(found.mistake, 'op de klok gezet', said(S.T));
+  S.point = mod(Math.floor(face(S.target) / 60), 12) || 12;
+  $('#live').insertAdjacentHTML('beforeend', `<span class="nudge">${esc(found.text)}</span>`);
 }
 
 function hints(now) {
@@ -685,7 +735,7 @@ cv.addEventListener('pointerdown', e => {
   const z = zone(e);
   if (!z) return;
   S.touched = true; if (coach) stopCoach(performance.now());
-  if (z.kind === 'hour') return playerHour(z.n);
+  if (z.kind === 'hour') return tapNumber(z.n);
   /* de grote wijzer kan over een getal liggen: stil loslaten is dan een tik op dat getal, slepen draait de wijzer */
   dragging = z.kind === 'small' ? 'hour' : z.n ? 'maybe' : 'minute'; cv.setPointerCapture(e.pointerId);
   lastAngle = minuteAt(e); pressed = {x: e.clientX, y: e.clientY, n: z.n};
@@ -697,10 +747,21 @@ cv.addEventListener('pointermove', e => {
   if (dragging === 'hour') { const n = hourAt(e); if (n !== (mod(Math.floor(S.T / 60), 12) || 12) || mod(S.T, 60)) playerHour(n); return; }
   const m = minuteAt(e); S.P += wrap(m - lastAngle); lastAngle = m; setT(true);
 });
-cv.addEventListener('pointerup', () => { if (dragging === 'maybe') playerHour(pressed.n); dragging = false; });
+cv.addEventListener('pointerup', () => { if (dragging === 'maybe') tapNumber(pressed.n); dragging = false; });
 cv.addEventListener('pointercancel', () => { dragging = false; });
 
-function playerHour(n) { S.usedHour = true; S.tip = ''; setHour(n); }
+function playerHour(n) { S.usedHour = true; S.tapped = true; S.tip = ''; setHour(n); renderLive(); }
+
+/* na een getikt uur dat klopt is de grote wijzer aan de beurt: een tik op een getal draait hem daarheen */
+const bigTurn = () => S.phase === 'skate' && !coach && S.tapped
+  && Math.floor(face(S.T) / 60) === Math.floor(face(S.target) / 60) && mod(S.T, 60) !== mod(S.target, 60);
+
+function tapNumber(n) {
+  if (!bigTurn()) return playerHour(n);
+  S.P = Math.floor(S.T / 60) * 60 + n % 12 * 5; setT(true);
+  const [x, y] = at(n / 12 * Math.PI * 2, R * .74);
+  rings.push({x, y, r: 10, life: 1});
+}
 
 function setHour(n) {
   const base = n % 12 * 60;
@@ -713,8 +774,8 @@ function setT(dragged) {
   const step = snap(), t = Math.round(S.P / step) * step, hop = Math.floor(t / 60) - Math.floor(S.T / 60);
   if (t === S.T) return;
   if (dragged && !coach) S.spun += Math.abs(t - S.T);
-  if (S.spun > 120 && !S.usedHour && !S.tip) S.tip = 'Tip: tik op een getal. Dan springt de kleine wijzer erheen.';
-  S.T = t; S.nudgeSince = 0; S.nudged = false; SFX.tick(mod(t, 60) / step % 4); renderLive();
+  if (S.spun > 120 && !S.usedHour && !S.tip) S.tip = 'Tik op een getal';
+  S.T = t; S.nudgeSince = 0; S.nudged = false; S.point = 0; SFX.tick(mod(t, 60) / step % 4); renderLive();
   if (!dragged || !hop) return;
   const h = mod(Math.floor(t / 60), 12) || 12, [x, y] = at(mod(t / 60, 12) / 12 * Math.PI * 2, R * .5);
   floatText(x, y - 34, hop < 0 ? `‹ ${h}` : `${h} ›`, '#FFD34E');
@@ -739,7 +800,9 @@ function renderLive() {
   const el = $('#live');
   if (S.phase !== 'skate') { el.innerHTML = ''; return; }
   const live = PHRASES[face(S.T)];
-  el.innerHTML = `<span class="lbl">Jouw klok zegt</span>${blocks(live)}${S.tip ? `<span class="nudge">${S.tip}</span>` : ''}`;
+  const tip = S.tip || (bigTurn() ? 'Nu de grote wijzer' : '');
+  el.innerHTML = `<span class="lbl">Jouw klok zegt</span>${blocks(live)}${tip ? `<span class="nudge">${tip}</span>` : ''}${S.offer && !coach
+    ? '<button class="btn ghost samen" type="button" id="samen">Samen doen?</button>' : ''}`;
   if (LEVELS[S.level].digital) return;
   const has = new Set(live.map(([w, r]) => r + ':' + w)), now = new Set();
   $('#target').querySelectorAll('.word').forEach((node, i) => {
@@ -753,29 +816,44 @@ function renderHud() {
   $('#score').textContent = S.score;
   $('#combo').textContent = S.combo > 1 ? `×${Math.min(S.combo, 5)}` : '';
   $('#level').textContent = LEVELS[S.level].name;
-  $('#dots').innerHTML = Array.from({length: GATES}, (_, i) =>
+  $('#dots').innerHTML = Array.from({length: S.gates}, (_, i) =>
     `<span class="dot${FROZEN.has(i) ? ' frozen' : ''}${BUILD.has(i) ? ' build' : ''}${i < S.gate ? ' done' : ''}${i === S.gate && S.phase !== 'end' ? ' now' : ''}"></span>`).join('');
 }
 function popCombo() { const c = $('#combo'); c.classList.remove('pop'); void c.offsetWidth; c.classList.add('pop'); }
 
 /* ---------- ronde ---------- */
 function pickTarget() {
+  const due = S.again.findIndex(a => a.gate <= S.gate);
+  if (due >= 0) {
+    const [{target}] = S.again.splice(due, 1);
+    S.target = target + 1440 * Math.round((S.T - target) / 1440);
+    return;
+  }
   const L = LEVELS[S.level], options = [];
   for (let d = 10; d <= REACH; d++) for (const t of [S.T + d, S.T - d]) if (L.minutes.includes(mod(t, 60))) options.push(t);
-  S.target = options[Math.floor(Math.random() * options.length)];
+  const weak = focus(), practise = weak ? options.filter(t => trains(t, weak)) : [];
+  const pool = practise.length && Math.random() < .5 ? practise : options;
+  S.target = pool[Math.floor(Math.random() * pool.length)];
+}
+
+/* een tijd die samen gedaan is komt een paar poorten later terug, dan doe je hem zelf */
+function again() {
+  const gate = Math.max(Math.min(S.gate + AGAIN, S.gates), ...S.again.map(a => a.gate + 1));
+  S.again.push({gate, target: S.target});
+  S.gates = Math.max(S.gates, gate + 1);
 }
 
 function startRun() {
   const start = Math.floor(Math.random() * 24) * 60;
-  Object.assign(S, {phase: 'skate', T: start, P: start, disp: start, gate: 0, score: 0, combo: 0, best: 0, firstTry: 0, usedHour: false});
+  Object.assign(S, {phase: 'skate', T: start, P: start, disp: start, gate: 0, gates: GATES, again: [], score: 0, combo: 0, best: 0, firstTry: 0, usedHour: false});
   scratchC.getContext('2d').clearRect(0, 0, 2 * RB + 40, 2 * RB + 40);
   $('#start').hidden = true; $('#end').hidden = true;
   nextGate();
 }
 
 function nextGate() {
-  renderHud(); S.slips = [];
-  if (S.gate === GATES) return endRun();
+  renderHud(); S.slips = []; S.example = null; S.together = false; S.tapped = false; S.offer = false;
+  if (S.gate === S.gates) return endRun();
   if (BUILD.has(S.gate)) return startBuild();
   if (FROZEN.has(S.gate)) return startFrozen();
   S.phase = 'skate'; pickTarget(); S.gateStart = performance.now(); S.holdSince = 0; S.nudgeSince = 0; S.nudged = false; S.touched = false; S.spun = 0; S.tip = '';
@@ -784,9 +862,10 @@ function nextGate() {
 }
 
 function passGate(now) {
-  logGate('skate', !S.slips.length);
-  S.combo = now - S.gateStart < FAST ? S.combo + 1 : 1; S.best = Math.max(S.best, S.combo);
-  const pts = 100 * Math.min(S.combo, 5); S.score += pts;
+  logGate('skate', !S.slips.length && !S.together);
+  if (S.together) again();
+  S.combo = S.together ? 0 : now - S.gateStart < FAST ? S.combo + 1 : 1; S.best = Math.max(S.best, S.combo);
+  const pts = S.together ? 50 : 100 * Math.min(S.combo, 5); S.score += pts;
   const [x, y] = at(mod(S.T, 60) / 60 * Math.PI * 2, R * .8);
   burst(x, y, 60); rings.push({x, y, r: 10, life: 1}); floatText(x, y - 40, `+${pts}`);
   kick(12, 90); SFX.gate(S.combo); popCombo();
@@ -846,16 +925,17 @@ function spinTo(then) {
 }
 
 function startFrozen() {
-  S.attempts = 0; frost.cracks = []; frostC = null;
+  S.attempts = 0; S.misses = 0; frost.cracks = []; frostC = null;
   spinTo(() => { S.phase = 'frozen'; frost.goal = 1; SFX.freeze(); kick(6, 0); write(); });
 }
 
 function write(note = '', example = null) {
   show(`<p class="ask">${note || 'Hoe laat is het? Schrijf het op.'}</p>${example ? `${blocks(example, 'enter')}<p class="sub">Schrijf het nu zelf.</p>` : '<p class="sub">Spelling maakt niet uit.</p>'}
     <form id="form"><input id="answer" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" aria-label="Jouw antwoord" placeholder="schrijf hier…">
-    <button class="btn primary" type="submit">Ontdooi!</button></form>`);
+    <button class="btn primary" type="submit">Ontdooi!</button><button class="btn ghost" type="button" id="samen-write">Samen doen</button></form>`);
   const input = $('#answer'); setTimeout(() => input.focus(), 50);
-  $('#form').addEventListener('submit', e => { e.preventDefault(); if (input.value.trim()) read(input.value.trim()); });
+  $('#form').addEventListener('submit', e => { e.preventDefault(); input.value.trim() ? read(input.value.trim()) : together(); });
+  $('#samen-write').addEventListener('click', together);
 }
 
 async function read(text) {
@@ -863,8 +943,8 @@ async function read(text) {
   let res;
   try { res = await api('/read', {...clock(), text}); } catch (err) { return failed(err, () => read(text)); }
   S.attempts++;
-  if (res.dialogue) S.slips.push(...res.dialogue.steps.map(step => step.mistake));
-  if (res.verdict === 'unreadable') return S.attempts >= 2 ? together(res.right) : write(`Ik kan „${esc(res.spelled)}” niet goed lezen. Probeer het nog eens?`);
+  for (const step of res.dialogue ? res.dialogue.steps : []) slip(step.mistake, 'geschreven', text);
+  if (res.verdict === 'unreadable') return S.attempts >= 2 ? together() : write(`Ik kan „${esc(res.spelled)}” niet goed lezen. Probeer het nog eens?`);
   if (res.verdict === 'right' || res.verdict === 'other_words') {
     const first = S.attempts === 1;
     show(res.verdict === 'right'
@@ -874,8 +954,8 @@ async function read(text) {
   }
   show(`<p class="ask">Ik lees:</p>${blocks(res.said, 'enter')}<p class="ask">Bedoel je dat?</p>
     <div class="choices"><button class="btn primary" type="button" id="yes">Ja</button><button class="btn ghost" type="button" id="no">Nee, opnieuw</button></div>`);
-  $('#yes').addEventListener('click', () => S.attempts >= 2 ? together(res.right) : ask(res.dialogue));
-  $('#no').addEventListener('click', () => S.attempts >= 2 ? together(res.right) : write('Schrijf het nog een keer, dan lees ik beter.'));
+  $('#yes').addEventListener('click', () => S.attempts >= 2 ? together() : ask(res.dialogue));
+  $('#no').addEventListener('click', () => S.attempts >= 2 ? together() : write('Schrijf het nog een keer, dan lees ik beter.'));
   SFX.soft();
 }
 
@@ -906,13 +986,28 @@ async function choose(q, choice) {
   question(res);
 }
 
-function together(right) {
-  show(`<p class="ask">We doen hem samen. Het is:</p>${blocks(right, 'enter')}<div class="choices"><button class="btn primary" type="button" id="thaw">Ontdooi samen</button></div>`);
-  $('#thaw').addEventListener('click', () => thaw(50, false));
+/* samen doen bij een poort: eerst de vragen die nodig zijn, dan bouwen we de zin met de blokjes; de tijd komt later terug */
+async function together() {
+  S.together = true;
+  let res;
+  try { res = await api('/together', {...clock(), digital: !!LEVELS[S.level].digital}); } catch (err) { return failed(err, together); }
+  walk(res.steps, 0);
+}
+
+function walk(steps, i) {
+  if (i === steps.length) return build('Samen. Tik de blokjes.');
+  const q = steps[i];
+  show(`<p class="ask">${esc(q.ask)}</p>
+    <div class="choices">${q.options.map(o => `<button class="btn" type="button">${esc(o)}</button>`).join('')}</div><p class="hint" id="hint"></p>`);
+  panel.querySelectorAll('.choices .btn').forEach(b => b.addEventListener('click', () => {
+    if (b.textContent === q.answer) { crack(); SFX.crack(); return walk(steps, i + 1); }
+    $('#hint').textContent = q.hint; SFX.soft();
+  }));
 }
 
 function thaw(points, first) {
   logGate(S.phase === 'build' ? 'build' : 'frozen', first); S.phase = 'between';
+  if (S.together) again();
   if (first) { S.firstTry++; S.combo++; S.best = Math.max(S.best, S.combo); popCombo(); }
   const pts = points * Math.max(1, Math.min(S.combo, 5));
   setTimeout(() => {
@@ -923,24 +1018,30 @@ function thaw(points, first) {
 }
 
 /* ---------- zinnen bouwen: woordblokjes, de regels komen van de server ---------- */
-function startBuild() { spinTo(() => { S.phase = 'build'; S.placed = []; S.misses = 0; build(); }); }
+function startBuild() { spinTo(() => { S.phase = 'build'; S.misses = 0; build(); }); }
 
 const label = (word, digit) => digit ? `<span>${digit}</span><small>${esc(word)}</small>` : esc(word);
 
-async function build() {
+async function build(lead = 'Bouw de zin. Tik de woorden in de goede volgorde.') {
   let res;
-  try { res = await api('/build', clock()); } catch (err) { return failed(err, build); }
-  show(`<p class="ask">Bouw de zin. Tik de woorden in de goede volgorde.</p><div class="built" id="built"><span class="slot"></span></div>
-    <div class="tray">${res.tray.map(([w, d]) => `<button class="word" type="button" data-word="${esc(w)}" data-digit="${d || ''}">${label(w, d)}</button>`).join('')}</div><p class="hint" id="hint"></p>`, '<span>Zinnen bouwen</span>');
+  try { res = await api('/build', clock()); } catch (err) { return failed(err, () => build(lead)); }
+  S.placed = [];
+  show(`<p class="ask">${lead}</p>${S.together ? example() : ''}<div class="built" id="built"><span class="slot"></span></div>
+    <div class="tray">${res.tray.map(([w, d]) => `<button class="word" type="button" data-word="${esc(w)}" data-digit="${d || ''}">${label(w, d)}</button>`).join('')}</div>
+    <p class="hint" id="hint"></p>${S.together ? '' : '<div class="choices"><button class="btn ghost" type="button" id="samen-build">Samen doen</button></div>'}`, '<span>Zinnen bouwen</span>');
   panel.querySelectorAll('.tray .word').forEach(b => b.addEventListener('click', () => tap(b)));
+  if (!S.together) $('#samen-build').addEventListener('click', e => {
+    S.together = true; $('#built').insertAdjacentHTML('beforebegin', example()); e.target.parentElement.remove();
+  });
 }
+const example = () => `<p class="sub">Zo gaat de zin:</p><div class="ghost-line">${blocks(PHRASES[face(S.target)])}</div>`;
 
 async function tap(block) {
   const {word, digit} = block.dataset;
   let res;
   try { res = await api('/place', {...clock(), placed: S.placed, word}); } catch (err) { return failed(err, () => tap(block)); }
   if (res.hint) {
-    S.misses++; S.slips.push(res.mistake); $('#hint').textContent = res.hint; SFX.soft();
+    S.misses++; slip(res.mistake, 'als blokje gekozen', word); $('#hint').textContent = res.hint; SFX.soft();
     block.classList.remove('nope'); void block.offsetWidth; block.classList.add('nope');
     return;
   }
@@ -950,36 +1051,61 @@ async function tap(block) {
   if (!res.done) return;
   $('#built .slot').remove();
   panel.querySelectorAll('.tray .word').forEach(b => { b.disabled = true; });
-  thaw(S.misses ? 50 : 100, !S.misses);
+  thaw(S.misses || S.together ? 50 : 100, !S.misses && !S.together);
 }
 
-/* ---------- voor ouders: per poort welke denkfouten er waren, alleen in deze browser ---------- */
+/* ---------- voor ouders: één ding om op te letten, met een eigen voorbeeld en iets voor thuis; alles in deze browser ---------- */
 const SLIPS = {
-  order: 'Volgorde: de minuten eerst, het uur achteraan', hour: 'Welk uur: bij voor en half het uur dat nog komt',
-  direction: 'Over of voor', anchor: 'Half of heel uur', number: 'Hoeveel minuten', '24h': 'De 24-uursklok',
+  hour: {why: 'Bij „voor” en „half” hoort het uur dat nog komt.', home: 'Vraag bij een klok eerst: „Welk uur komt eraan?”'},
+  order: {why: 'Eerst de minuten, dan het uur.', home: 'Zeg samen tijden hardop. Het uur komt als laatste.'},
+  direction: {why: '„Over” is al voorbij, „voor” komt nog.', home: 'Volg de grote wijzer met je vinger: is de 12 of de 6 al geweest?'},
+  anchor: {why: 'Grote wijzer onder: het gaat om half. Boven: om het hele uur.', home: 'Vraag alleen: staat de grote wijzer boven of onder?'},
+  number: {why: 'Minuten tel je in stapjes van vijf.', home: 'Tel samen langs de getallen: vijf, tien, kwart, twintig.'},
+  '24h': {why: 'Na 12 uur tel je door: 13 is 1, 14 is 2.', home: 'Wijs een digitale klok aan, zoals op de oven: waar staat de kleine wijzer dan?'},
 };
 const WEEK = 7 * 24 * 3600 * 1000;
+const said = t => PHRASES[face(t)].map(([w]) => w).join(' ');
+const shown = t => LEVELS[S.level].digital ? hhmm(t) : said(t);
+
+function slip(mistake, how, what) { S.slips.push(mistake); S.example = S.example || {mistake, how, what}; }
 
 function logGate(kind, first) {
   const log = store.get('log', []);
-  log.push({at: Date.now(), level: S.level, kind, first, slips: S.slips});
+  log.push({at: Date.now(), level: S.level, kind, first, together: S.together, slips: S.slips, target: shown(S.target), right: said(S.target), example: S.example});
   store.set('log', log.slice(-3000));
 }
 
+const lastWeek = () => store.get('log', []).filter(g => Date.now() - g.at < WEEK);
+const tally = (gates, mistake) => gates.reduce((n, g) => n + g.slips.filter(s => s === mistake).length, 0);
+
+/* de denkfout die deze week het vaakst voorkwam, vanaf drie keer: het spel geeft daar vaker tijden voor */
+function focus() {
+  const week = lastWeek(), [top] = Object.keys(SLIPS).map(m => [m, tally(week, m)]).sort((a, b) => b[1] - a[1]);
+  return top[1] >= 3 ? top[0] : null;
+}
+
+function trains(t, mistake) {
+  const words = PHRASES[face(t)].map(([w]) => w);
+  if (mistake === 'hour') return words.includes('half') || words.includes('voor');
+  if (mistake === '24h') return mod(t, 1440) >= 13 * 60;
+  return words.includes('over') || words.includes('voor');
+}
+
+/* per niveau een woord, de fout die het vaakst voorkwam met een eigen voorbeeld, en één ding om thuis te doen */
 function report() {
-  const log = store.get('log', []), now = Date.now();
-  const week = log.filter(g => now - g.at < WEEK), before = log.filter(g => now - g.at >= WEEK && now - g.at < 2 * WEEK);
-  const count = (gates, slip) => gates.reduce((n, g) => n + g.slips.filter(s => s === slip).length, 0);
-  const slips = Object.entries(SLIPS).map(([slip, name]) => {
-    const a = count(week, slip), b = count(before, slip), trend = a > b ? 'up' : a < b ? 'down' : '';
-    return `<tr><td>${name}</td><td class="n ${trend}">${a}</td><td class="n">${b}</td></tr>`;
+  const week = lastWeek(), weak = focus();
+  const progress = LEVELS.map((l, i) => {
+    const gates = week.filter(g => g.level === i), share = gates.filter(g => g.first).length / gates.length;
+    const [cls, word] = !gates.length ? ['none', 'nog niet geoefend'] : share >= .8 ? ['ok', 'kan het'] : share >= .5 ? ['almost', 'bijna'] : ['hard', 'nog lastig'];
+    return `<li><span>${l.name}</span><b class="${cls}">${word}</b></li>`;
   }).join('');
-  const levels = LEVELS.map((l, i) => {
-    const gates = week.filter(g => g.level === i), first = gates.filter(g => g.first).length;
-    return gates.length ? `<tr><td>${l.name}</td><td class="n">${gates.length}</td><td class="n">${Math.round(100 * first / gates.length)}%</td></tr>` : '';
-  }).join('');
-  $('#report').innerHTML = `<table class="report"><tr><th>Denkfout</th><th class="n">Deze week</th><th class="n">Week ervoor</th></tr>${slips}</table>
-    <table class="report" style="margin-top:22px"><tr><th>Niveau, deze week</th><th class="n">Poorten</th><th class="n">In één keer</th></tr>${levels || '<tr><td colspan="3">Nog niet gespeeld.</td></tr>'}</table>`;
+  const seen = weak && week.filter(g => g.example && g.example.mistake === weak).at(-1);
+  const wrong = !weak ? '' : `<h3>Dit gaat nog vaak mis</h3>
+    ${seen && seen.target !== seen.right ? `<p>Bij ${esc(seen.target)}:</p>` : ''}
+    ${seen ? `<div class="said"><span class="no">✗</span><span class="no">${esc(seen.example.what)}</span><span class="yes">✓</span><span class="yes">${esc(seen.right)}</span></div>` : ''}
+    <p>${SLIPS[weak].why}</p>
+    <h3>Oefen thuis</h3><p>${SLIPS[weak].home}</p><p class="small">Het spel oefent dit nu ook vaker.</p>`;
+  $('#report').innerHTML = `<div class="focus"><ul class="progress">${progress}</ul>${wrong}</div>`;
   $('#parents').hidden = false;
 }
 $('#open-parents').addEventListener('click', report);
@@ -990,6 +1116,7 @@ $('#reset').addEventListener('click', () => {
   location.reload();
 });
 $('#reload').addEventListener('click', () => location.reload());
+$('#live').addEventListener('click', e => { if (e.target.closest('#samen')) { audio(); startTogether(performance.now()); } });
 
 /* ---------- start ---------- */
 function toggles() {

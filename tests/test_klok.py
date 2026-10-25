@@ -14,6 +14,7 @@ from klok import (
     sentence,
     spelled_out,
     steps,
+    together,
     tray,
     words,
 )
@@ -156,16 +157,34 @@ def test_lookalikes() -> None:
     assert not alike("acht", "negen")
 
 
+def said_nudge(hour: int, minute: int, at: int, digital: bool = False) -> tuple[str, str] | None:
+    found = nudge(hour, minute, at, digital)
+    return None if found is None else (found.mistake, found.text)
+
+
 def test_half_five_turned_back_from_four() -> None:
-    assert nudge(16, 30, 3 * 60 + 30) == "Bij half hoort het uur dat nog komt. Tik dat uur en draai terug."
-    assert nudge(16, 30, 4 * 60 + 30) is None
-    assert nudge(16, 30, 4 * 60) is None
+    assert said_nudge(16, 30, 3 * 60 + 30) == ("hour", "Nog niet de 5. Tik de 4.")
+    assert said_nudge(16, 30, 4 * 60 + 30) is None
+    assert said_nudge(16, 30, 4 * 60) is None
 
 
 def test_nudges_follow_the_sentence() -> None:
-    assert nudge(20, 56, 7 * 60 + 56) == "Bij voor hoort het uur dat nog komt. Tik dat uur en draai terug."
-    assert nudge(20, 10, 9 * 60 + 10) == "Bij over hoort het uur dat net geweest is. Tik dat uur en draai vooruit."
-    assert nudge(20, 0, 9 * 60) == "De grote wijzer staat goed. Tik nu het uur dat in de zin staat."
+    assert said_nudge(20, 56, 7 * 60 + 56) == ("hour", "Nog niet de 9. Tik de 8.")
+    assert said_nudge(20, 10, 9 * 60 + 10) == ("hour", "Tik de 8.")
+    assert said_nudge(20, 0, 9 * 60) == ("hour", "Tik de 8.")
+
+
+def test_an_hour_too_early_on_the_digital_clock() -> None:
+    assert said_nudge(22, 36, 9 * 60 + 36, digital=True) == ("24h", "22 = 10")
+    assert said_nudge(8, 56, 9 * 60 + 56, digital=True) == ("hour", "Tik de 8.")
+
+
+def test_together_asks_the_clock_hour_first_on_the_digital_clock() -> None:
+    [step] = together(15, digital=True)
+    assert (step.mistake, step.options, step.answer) == ("24h", ["2", "3", "4"], "3")
+    assert together(13, digital=True)[0].options == ["1", "2", "12"]
+    assert together(15, digital=False) == []
+    assert together(9, digital=True) == []
 
 
 @pytest.mark.parametrize(

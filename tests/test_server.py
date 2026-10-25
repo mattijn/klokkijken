@@ -76,3 +76,14 @@ def test_building_four_to_nine() -> None:
 def test_glued_numerals_are_read() -> None:
     read = post("/read", {"hour": 20, "minute": 56, "text": "4voor8"})
     assert [w for w, role in read["said"]] == ["vier", "voor", "acht"]
+
+
+def test_nudge_names_its_mistake() -> None:
+    nudge = post("/nudge", {"hour": 15, "minute": 47, "at": 2 * 60 + 47, "digital": True})["nudge"]
+    assert nudge["mistake"] == "24h"
+    assert post("/nudge", {"hour": 15, "minute": 47, "at": 3 * 60 + 47, "digital": True})["nudge"] is None
+
+
+def test_together_on_the_digital_clock() -> None:
+    [step] = post("/together", {"hour": 18, "minute": 37, "digital": True})["steps"]
+    assert step["answer"] == "6"
