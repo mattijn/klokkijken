@@ -108,6 +108,8 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:8;background:rgba(22,10,54,.72);padding:24px;
   -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .overlay[hidden]{display:none}
+#skip{display:none;position:fixed;right:16px;bottom:max(14px,env(safe-area-inset-bottom));z-index:7;background:rgba(0,0,0,.6);color:var(--lilac)}
+body.movie #skip{display:inline-flex}body.movie .hud,body.movie #target,body.movie #live{opacity:0;pointer-events:none}
 .overlay{overflow-y:auto}.overlay>.card{margin:auto}
 .overlay.crash{z-index:20}
 #parents{z-index:9}
@@ -201,6 +203,7 @@ body.calm *{animation:none!important;transition:none!important}
 <div class="target" id="target"></div>
 <div class="live" id="live"></div>
 <div class="panel" id="panel" hidden aria-live="polite"></div>
+<button class="chip" id="skip" type="button">Overslaan ›</button>
 
 <div class="overlay" id="start">
   <div class="card">
@@ -527,6 +530,7 @@ function frame(now) {
   geometry(false);
   const frozenTime = now < stopUntil;
   if (!frozenTime) update(dt * (party ? party.slow : 1), now);
+  if (party && now - party.t0 >= party.dur) { document.body.classList.remove('movie'); party.finish(); }
   draw(now); drawTrail(now, dt); drawRun(now, dt);
   requestAnimationFrame(frame);
 }
@@ -1004,7 +1008,7 @@ function startRun() {
 /* terug naar het beginscherm, midden in een ronde */
 function stopRun() {
   if (coach) stopCoach(performance.now());
-  S.phase = 'start'; blast = null; party = null; frost.goal = 0; trail.u = null; panel.hidden = true; $('#target').innerHTML = '';
+  S.phase = 'start'; blast = null; party = null; frost.goal = 0; document.body.classList.remove('movie'); trail.u = null; panel.hidden = true; $('#target').innerHTML = '';
   renderLive(); renderHud(); renderLevels('#levels'); $('#end').hidden = true; $('#start').hidden = false;
 }
 
@@ -1057,8 +1061,7 @@ function endRun() {
   renderLevels('#levels-end');
   $('#target').innerHTML = '';
   if (stars < 2) return showEnd(stars);
-  S.phase = 'party'; party = celebrate(champion);
-  setTimeout(showEnd, party.dur, stars);
+  S.phase = 'party'; party = celebrate(champion, () => showEnd(stars));
 }
 
 function showEnd(stars) {
@@ -1071,18 +1074,22 @@ function showEnd(stars) {
 /* beste sterren per niveau; wie al verder was voor de sterren bewaard werden, had daar minstens twee */
 const best = i => Math.max(store.get('stars', [])[i] || 0, i < S.unlocked ? 2 : 0);
 const allGold = () => LEVELS.every((l, i) => best(i) === 3);
-const celebrate = champion => ({t0: performance.now(), dur: champion ? (S.calm ? 3500 : 13000) : (S.calm ? 1200 : 4600), level: S.played,
-  champion, slow: 1, jumped: false, cheered: false, next: 0, boarded: false, glass: null});
+function celebrate(champion, finish) {
+  document.body.classList.toggle('movie', champion);
+  return {t0: performance.now(), dur: champion ? MOVIE : (S.calm ? 1200 : 4600), level: S.played, champion, finish,
+    slow: 1, jumped: false, cheered: false, next: 0, boarded: false, dodged: false, glass: null};
+}
 
 /* alles goud: de beker aan het eind van de lijn speelt het kampioensfeest nog een keer */
 function replayChampion() {
-  audio(); $('#start').hidden = true; S.phase = 'party';
-  const mine = party = celebrate(true);
-  setTimeout(() => { if (party !== mine) return; party = null; S.phase = 'start'; trail.u = null; $('#start').hidden = false; }, mine.dur);
+  const back = S.phase, screen = back === 'end' ? '#end' : '#start';
+  audio(); $(screen).hidden = true; S.phase = 'party';
+  party = celebrate(true, () => { party = null; S.phase = back; trail.u = null; $(screen).hidden = false; });
 }
+$('#skip').addEventListener('click', () => { if (party) party.t0 = performance.now() - party.dur; });
 
 /* dezelfde schaatser van voren (of van achteren, zonder gezicht), juichend: elk niveau met een eigen gebaar */
-function skaterFront(x, y, s, suit, accent, pose, t, face, board = false) {
+function skaterFront(x, y, s, suit, accent, pose, t, face, board = 0) {
   ctx.save(); ctx.translate(x, y - Math.abs(Math.sin(t * 7)) * 3 * s); ctx.scale(s, s); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const limb = (a, b, w, color) => { ctx.strokeStyle = color; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke(); };
   const wig = Math.sin(t * 9), hands = {
@@ -1091,22 +1098,23 @@ function skaterFront(x, y, s, suit, accent, pose, t, face, board = false) {
     pump: [[-8, -22], [10, -42 - Math.max(0, wig) * 6]],
     clap: [[-2 - Math.abs(wig) * 6, -47], [2 + Math.abs(wig) * 6, -47]],
     star: [[-17, -36 + wig * 3], [17, -36 - wig * 3]],
+    dodge: [[-16 + wig * 3, -44 + wig * 5], [15 - wig * 3, -24 - wig * 5]],
   }[pose];
   for (const side of [-1, 1]) {
     const hip = [side * 3, -17], knee = [side * 5.5, -8.5], foot = [side * 7.5, -1];
     limb(hip, knee, 5.2, suit); limb(knee, foot, 4.6, suit);
     limb([side * 7.5 - 2.5, foot[1]], [side * 7.5 + 2.5, foot[1]], 4, BOOT);
-    if (!board) limb([side * 7.5 - 4, foot[1] + 3], [side * 7.5 + 4, foot[1] + 3], 1.6, BLADE);
+    if (board < 1) limb([side * 7.5 - 4, foot[1] + 3], [side * 7.5 + 4, foot[1] + 3], 1.6, BLADE);
   }
   if (board) {
-    for (const side of [-1, 1]) {
+    if (board >= 1) for (const side of [-1, 1]) {
       const jet = ctx.createLinearGradient(0, 4, 0, 44);
       jet.addColorStop(0, 'rgba(190,245,255,.95)'); jet.addColorStop(1, 'rgba(62,232,255,0)');
       ctx.fillStyle = jet; ctx.beginPath(); ctx.moveTo(side * 9 - 2.5, 4); ctx.lineTo(side * 9 + 2.5, 4);
       ctx.lineTo(side * 9 + 6 + Math.sin(t * 40 + side) * 1.5, 44); ctx.lineTo(side * 9 - 6 + Math.sin(t * 37 - side) * 1.5, 44); ctx.closePath(); ctx.fill();
       limb([side * 9, 2], [side * 9, 5], 3.4, '#8A93A8');
     }
-    limb([-14, 1.5], [14, 1.5], 4.2, '#3EE8FF'); limb([-12, 1.5], [12, 1.5], 1.4, '#FFFFFF');
+    limb([-14 * board, 1.5], [14 * board, 1.5], 4.2, '#3EE8FF'); limb([-12 * board, 1.5], [12 * board, 1.5], 1.4, '#FFFFFF');
   }
   limb([0, -18], [0, -29], 10, suit);
   hands.forEach(([hx, hy], i) => {
@@ -1152,10 +1160,12 @@ const PARTIES = [
 const PARTY = {lift: .12, zoom: .45, dark: .7, suit: ['#FF4FB3', '#FFD34E'], keys: [.22, .3, .74, .8], ghosts: 0, cheer: 'Wieeew!'};
 /* alle niveaus goud: een gouden schaatser, hoger en langer in de lucht, drie slagen met alle gebaren, in bullet-time met
    nabeelden, en daarna vuurwerk */
+const MOVIE = 24000;
 const CHAMPION = {pose: 'star', poses: ['v', 'pump', 'clap', 'wave', 'star'], turns: 3, way: 1, tilt: .16, lift: .15, zoom: .6, dark: .88,
-  suit: ['#FFD34E', '#FF4FB3'], keys: [.1, .15, .46, .5], ghosts: 5, cheer: ''};
-/* daarna worden de ijzers een flyboard: opstijgen, rondvliegen, op de camera af en krak, tegen het scherm */
-const FLY = [.6, .83, .9];
+  suit: ['#FFD34E', '#FF4FB3'], keys: [2.5, 3.2, 8, 8.6].map(k => k * 1000 / MOVIE), ghosts: 5, cheer: ''};
+/* daarna, als een film: de ijzers groeien uit tot een flyboard, hij stijgt rustig op, zwiert door het beeld, ontwijkt in
+   slowmotion kogels zoals in de Matrix, komt op je af en klapt tegen het glas; daar plakt hij en glijdt langzaam omlaag */
+const SCENE = {morph: 9.4, lift: 10.6, roam: 12.4, dodge: 13.6, dodged: 16.2, turn: 17.6, hit: 20, end: 24};
 let party = null;
 const span = (t, a, b) => Math.min(1, Math.max(0, (t - a) / (b - a)));
 
@@ -1163,7 +1173,7 @@ function drawParty(now) {
   const look = {...PARTY, ...(party.champion ? CHAMPION : PARTIES[party.level])}, [k1, k2, k3, k4] = look.keys;
   const t = Math.min(1, (now - party.t0) / party.dur), size = Math.min(W, H) / 170;
   const ground = H * .64, skate = span(t, 0, k1), rise = span(t, k1, k2), orbit = span(t, k2, k3), drop = span(t, k3, k4);
-  const zoom = 1 + look.zoom * Math.sin(Math.PI * span(t, k1 + .04, k4)), calm = S.calm;
+  const zoom = 1 + look.zoom * Math.sin(Math.PI * span(t, k1 + .04, k4)), calm = S.calm && !party.champion, sec = (now - party.t0) / 1000;
   const sweep = look.way > 0 ? 2 * Math.PI * look.turns - Math.PI / 2 : -(Math.PI / 2 + 2 * Math.PI * (look.turns - 1));
   const turn = calm ? () => 0 : o => Math.PI / 2 + ease(o) * sweep, yaw = turn(orbit);
   const air = ground - (Math.sin(Math.PI / 2 * rise) * (1 - drop)) * H * look.lift - Math.sin(Math.PI * orbit) * H * .02;
@@ -1183,7 +1193,7 @@ function drawParty(now) {
     }
     ctx.restore();
   }
-  const flying = party.champion && t >= FLY[0];
+  const flying = party.champion && sec >= SCENE.morph;
   if (!flying) {
   ctx.save(); ctx.translate(x, ground + 2 * size); ctx.scale(1, .22);
   ctx.strokeStyle = 'rgba(62,232,255,.5)'; ctx.lineWidth = 3 / .22; ctx.beginPath(); ctx.arc(0, 0, 34 * size, 0, Math.PI * 2); ctx.stroke();
@@ -1197,22 +1207,28 @@ function drawParty(now) {
   turntable(x, air, size, t < k1 ? Math.PI / 2 : yaw, pose, now / 1000, skate < 1 ? 7 : 1, look.suit);
   }
   ctx.restore();
-  if (flying) flight(now, t, size, ground, look.suit);
+  if (flying) flight(now, sec, size, ground, look.suit);
   if (rise > 0 && !party.jumped) { party.jumped = true; burst(x, air - 20 * size, 140, 13); SFX.hop(); }
   if (drop >= 1 && !party.cheered) {
     party.cheered = true;
     if (look.cheer) floatText(W / 2, ground - 75 * size, look.cheer, '#FFD34E');
     burst(W / 2, ground - 30 * size, 90, 10); SFX.gate(5); kick(10, 0);
   }
-  if (party.champion && party.cheered) {
-    const pop = Math.min(1, (t - k4) / .05), big = Math.min(W / 7, 92) * (calm ? 1 : .6 + .4 * pop + .04 * Math.sin(now / 160));
-    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `400 ${Math.round(big)}px Monoton, sans-serif`;
+  const shown = party.champion && party.cheered ? Math.max(1 - span(sec, SCENE.roam, SCENE.roam + .8), span(sec, SCENE.hit + .8, SCENE.hit + 1.6)) : 0;
+  if (shown > 0) {
+    const pop = Math.min(1, (t - k4) / .05), big = Math.min(W / 7, 92) * (.6 + .4 * pop + .04 * Math.sin(now / 160));
+    ctx.save(); ctx.globalAlpha = shown; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `400 ${Math.round(big)}px Monoton, sans-serif`;
     ctx.fillStyle = '#FFD34E'; ctx.shadowColor = '#FFD34E'; ctx.shadowBlur = 30; ctx.fillText('KAMPIOEN!', W / 2, H * .17); ctx.restore();
   }
-  if (party.champion && party.cheered && !party.glass && now > party.next) {
+  if (party.champion && party.cheered && sec < SCENE.roam && now > party.next) {
     party.next = now + (calm ? 900 : 380);
     const [fx, fy] = [W * (.12 + .76 * Math.random()), H * (.1 + .3 * Math.random())];
     burst(fx, fy, 70, 9); rings.push({x: fx, y: fy, r: 6, life: 1}); SFX.gate(1 + Math.floor(Math.random() * 5));
+  }
+  if (party.champion) {
+    const bar = H * .1 * Math.min(span(sec, 0, .8), 1 - span(sec, SCENE.end - .8, SCENE.end));
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, bar); ctx.fillRect(0, H - bar, W, bar);
+    if (party.glass) glass();
   }
 }
 
@@ -1223,31 +1239,60 @@ const stop = i => { const u = .07 + .185 * i; return [u, trailY(u)]; };
 function trailY(u) { return .56 - .1 * Math.cos((u - .07) / .185 * Math.PI); }
 const trail = {u: null, hold: 0, phase: 0, speed: 0, dir: 1};
 
-/* het flyboard: van de landingsplek omhoog, een rondje door het scherm met waterstralen, dan recht op je af tot hij het
-   glas raakt; daar blijft hij even plakken en glijdt omlaag, en het scherm heeft een barst */
-function flight(now, t, size, ground, [suit, accent]) {
-  const go = span(t, FLY[0], FLY[1]), near = span(t, FLY[1], FLY[2]), slide = span(t, FLY[2], 1);
-  const roam = p => [W / 2 + W * .32 * Math.sin(Math.PI * 2 * p * 1.5), H * .5 + H * .16 * Math.sin(Math.PI * 2 * p * 2 + .4)];
-  const lift = Math.min(1, go * 6), [rx, ry] = roam(go), [ex, ey] = roam(1), hit = [W / 2, H * .45], biggest = H * 1.1 / (50 * size);
-  let [x, y] = [W / 2 + (rx - W / 2) * lift, ground - 25 * size + (ry - ground + 25 * size) * lift], scale = 1.25, tilt = Math.cos(Math.PI * 2 * go * 1.5) * .35 * lift;
-  if (near > 0) { [x, y] = towards([ex, ey], hit, near); scale = 1.25 + (biggest - 1.25) * near * near; tilt *= 1 - near; }
-  if (slide > 0) { scale = biggest; y = hit[1] + H * .3 * ease(slide); tilt = .12 * Math.sin(slide * 3); }
-  if (go > 0 && !party.boarded) { party.boarded = true; burst(W / 2, ground - 10 * size, 80, 9); SFX.hop(); }
-  if (near < 1) spray(x, y + 28 * size * scale, 0, -1, 3);
-  ctx.save(); ctx.translate(x, y); ctx.rotate(tilt);
-  if (slide > 0) { ctx.scale(1.08, .94); ctx.globalAlpha = 1 - span(slide, .7, 1); }
-  skaterFront(0, 25 * size * scale, size * scale, suit, accent, slide > 0 ? 'star' : 'v', now / 1000, true, near < 1);
+function flight(now, sec, size, ground, [suit, accent]) {
+  const morph = span(sec, SCENE.morph, SCENE.morph + 1), lift = span(sec, SCENE.lift, SCENE.roam), dodge = span(sec, SCENE.dodge, SCENE.dodged);
+  const near = span(sec, SCENE.turn, SCENE.hit), slide = span(sec, SCENE.hit, SCENE.end - .6);
+  const way = .3 * span(sec, SCENE.roam, SCENE.dodge) + .7 * ease(span(sec, SCENE.dodged, SCENE.turn));
+  const roam = p => [W / 2 + W * .3 * Math.sin(Math.PI * 2 * p), H * .4 + H * .12 * Math.sin(Math.PI * 4 * p)];
+  const hit = [W / 2, H * .45], biggest = H * 1.1 / (50 * size), flying = sec >= SCENE.roam;
+  let scale = 1 + .25 * ease(lift), [x, y] = flying ? roam(way) : towards([W / 2, ground], [roam(0)[0], roam(0)[1] + 25 * size * 1.25], lift);
+  if (flying) y += 25 * size * scale;
+  y += Math.sin(now / 320) * 3 * size * lift;
+  let tilt = flying ? Math.cos(Math.PI * 2 * way) * .3 * (1 - dodge * (1 - dodge) * 4) : 0, lean = 0;
+  if (dodge > 0 && dodge < 1) { lean = -1.2 * Math.sin(Math.PI * Math.min(1, dodge * 1.3)); party.slow = .15; bullets(dodge, x, y - 25 * size * scale, size); }
+  if (dodge > 0 && !party.dodged) { party.dodged = true; SFX.hop(); }
+  if (near > 0) { [x, y] = towards(roam(1).map((v, i) => v + (i ? 25 * size * 1.25 : 0)), [hit[0], hit[1] + 25 * size * biggest], near); scale = 1.25 + (biggest - 1.25) * Math.pow(near, 3); tilt *= 1 - near; }
+  if (slide > 0) { scale = biggest; y = hit[1] + 25 * size * biggest + H * .32 * ease(slide); tilt = .1 * Math.sin(slide * 3); }
+  if (!party.boarded) { party.boarded = true; burst(W / 2, ground - 10 * size, 90, 8); rings.push({x: W / 2, y: ground, r: 10, life: 1}); SFX.gate(5); }
+  if (sec > SCENE.morph + .8 && near < 1) spray(x, y + 3 * size * scale, 0, -1, 3);
+  if (morph < 1) { ctx.save(); ctx.fillStyle = `rgba(255,255,255,${.55 * (1 - span(sec, SCENE.morph, SCENE.morph + .4))})`; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+  ctx.save(); ctx.translate(x, y); ctx.rotate(tilt + lean);
+  if (slide > 0) { ctx.scale(1.08, .94); ctx.globalAlpha = 1 - span(slide, .85, 1); }
+  const board = sec >= SCENE.morph + .8 ? 1 : Math.max(.05, ease(morph));
+  skaterFront(0, 0, size * scale, suit, accent, slide > 0 ? 'star' : dodge > 0 && dodge < 1 ? 'dodge' : lift > 0 ? 'v' : 'pump', now / 1000, true, board);
   ctx.restore();
   if (near >= 1 && !party.glass) {
     party.glass = cracks(...hit); SFX.crack(); SFX.shatter(); kick(26, 140); burst(...hit, 120, 14, 'confetti'); rings.push({x: hit[0], y: hit[1], r: 10, life: 1});
   }
-  if (party.glass) {
-    ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.shadowColor = '#BFF3FF'; ctx.shadowBlur = 8;
-    const glow = ctx.createRadialGradient(...hit, 0, ...hit, 70); glow.addColorStop(0, 'rgba(255,255,255,.55)'); glow.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(...hit, 70, 0, Math.PI * 2); ctx.fill();
-    for (const {pts, w} of party.glass) { ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(...pts[0]); for (const q of pts.slice(1)) ctx.lineTo(...q); ctx.stroke(); }
-    ctx.restore();
+}
+
+/* kogels die in slowmotion langs suizen, met golfjes in de lucht erachter */
+function bullets(p, x, y, size) {
+  ctx.save();
+  for (let i = 0; i < 3; i++) {
+    const q = p * 1.5 - i * .22;
+    if (q <= 0 || q >= 1) continue;
+    const bx = -40 + (W + 80) * q, by = y - (12 - i * 14) * size;
+    for (let k = 1; k <= 5; k++) {
+      ctx.strokeStyle = `rgba(190,245,255,${.5 - k * .08})`; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.ellipse(bx - k * 26 * size / 2, by, 2 + k * 1.2 * size, 4 + k * 2.4 * size, 0, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.fillStyle = '#FFD34E'; ctx.shadowColor = '#FFD34E'; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.ellipse(bx, by, 5 * size / 2, 2.2 * size / 2, 0, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
   }
+  ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1;
+  for (let i = 0; i < 14; i++) { const ly = (i * 97 % 100) / 100 * H; ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(W, ly + (x - W / 2) * .02); ctx.stroke(); }
+  ctx.restore();
+}
+
+/* de barst blijft boven alles liggen, ook over de filmbalken */
+function glass() {
+  const hit = [W / 2, H * .45];
+  ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.shadowColor = '#BFF3FF'; ctx.shadowBlur = 8;
+  const glow = ctx.createRadialGradient(...hit, 0, ...hit, 70); glow.addColorStop(0, 'rgba(255,255,255,.55)'); glow.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(...hit, 70, 0, Math.PI * 2); ctx.fill();
+  for (const {pts, w} of party.glass) { ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(...pts[0]); for (const q of pts.slice(1)) ctx.lineTo(...q); ctx.stroke(); }
+  ctx.restore();
 }
 
 /* een barst in het glas: kronkelende stralen vanuit de klap en wat stukjes ring ertussen */
@@ -1291,7 +1336,7 @@ function renderLevels(sel) {
   $(sel).querySelectorAll('.lv').forEach(b => b.addEventListener('click', () => {
     S.level = +b.dataset.level; store.set('level', S.level); renderLevels(sel); renderHud();
   }));
-  $(sel).querySelector('.cup').addEventListener('click', () => { if (S.phase === 'start') replayChampion(); });
+  $(sel).querySelector('.cup').addEventListener('click', () => { if (S.phase === 'start' || S.phase === 'end') replayChampion(); });
   $('#again').textContent = S.level === S.played ? 'Nog een rondje' : `Naar ${LEVELS[S.level].name}!`;
 }
 

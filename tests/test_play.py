@@ -505,13 +505,25 @@ def test_all_gold_is_a_champion(chromium: Browser, url: str) -> None:
     page.reload()
     page.wait_for_function("PHRASES.length === 720")
     assert page.locator("#levels .cup").is_disabled()
-    end_level(page, 4, first=4, helped=False)
+    start_level(page, 4)
+    page.evaluate("""S.firstTry = 4; S.helped = false; S.marks = [true, true, true, true].map(f => ({kind: 'build', first: f}));
+      S.gate = S.gates; endRun(); true""")
+    assert page.evaluate("[S.phase, party.champion, party.dur]") == ["party", True, 24000]
+    page.wait_for_timeout(2000)
+    assert page.evaluate("S.phase") == "party"
+    page.click("#skip")
+    page.wait_for_function("S.phase === 'end'")
     assert page.inner_text("#end-title") == "Kampioen!"
     assert page.inner_text("#goal") == "Alle niveaus goud!"
+    page.click("#levels-end .cup")
+    assert page.evaluate("[S.phase, party.champion]") == ["party", True]
+    page.click("#skip")
+    page.wait_for_function("S.phase === 'end'")
+    assert page.locator("#end").is_visible()
     page.evaluate("stopRun()")
     page.click("#levels .cup")
-    assert page.evaluate("[S.phase, party.champion]") == ["party", True]
-    page.wait_for_function("S.phase === 'start'", timeout=5000)
+    page.click("#skip")
+    page.wait_for_function("S.phase === 'start'")
     assert page.locator("#start").is_visible()
     assert errors == []
 
