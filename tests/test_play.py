@@ -146,3 +146,20 @@ def test_the_parent_report_counts_the_gates(chromium: Browser, url: str) -> None
     assert "Hele uren" in page.inner_text("#report")
     assert page.evaluate("store.get('log', []).length") == 10
     assert errors == []
+
+
+def test_starting_over_clears_everything(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    play_round(page, 0)
+    page.evaluate("report()")
+    page.once("dialog", accept)
+    with page.expect_navigation():
+        page.click("#reset")
+    page.wait_for_function("PHRASES.length === 720")
+    assert page.evaluate("Object.keys(localStorage).filter(k => k.startsWith('ijsbaan.'))") == []
+    assert page.evaluate("[S.level, S.unlocked]") == [0, 0]
+    assert errors == []
+
+
+def accept(dialog: Any) -> None:
+    dialog.accept()

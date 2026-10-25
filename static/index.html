@@ -98,6 +98,7 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
   -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .overlay[hidden]{display:none}
 .overlay.crash{z-index:20}
+#parents{z-index:9}
 .sub-title{font:800 clamp(26px,4vw,36px)/1.1 var(--f-main);margin:0;color:#fff}
 .card.wide{max-width:760px;width:100%}
 .card code{font:13px/1.4 ui-monospace,monospace;color:var(--mute);max-width:60ch;overflow-wrap:anywhere}
@@ -164,7 +165,8 @@ body.calm *{animation:none!important;transition:none!important}
     <h2 class="sub-title">Voor ouders</h2>
     <p>Welke denkfouten komen voor, deze week tegenover de week ervoor. Alles blijft in deze browser.</p>
     <div id="report"></div>
-    <button class="btn primary" id="close-parents" type="button">Terug</button>
+    <div class="choices"><button class="btn primary" id="close-parents" type="button">Terug</button>
+      <button class="btn ghost" id="reset" type="button">Opnieuw beginnen</button></div>
   </div>
 </div>
 
@@ -982,6 +984,11 @@ function report() {
 }
 $('#open-parents').addEventListener('click', report);
 $('#close-parents').addEventListener('click', () => { $('#parents').hidden = true; });
+$('#reset').addEventListener('click', () => {
+  if (!confirm('Alles wissen? Niveaus, sterren, het overzicht en het voordoen beginnen dan opnieuw.')) return;
+  for (const key of Object.keys(localStorage).filter(k => k.startsWith('ijsbaan.'))) localStorage.removeItem(key);
+  location.reload();
+});
 $('#reload').addEventListener('click', () => location.reload());
 
 /* ---------- start ---------- */
