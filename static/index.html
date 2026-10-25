@@ -212,11 +212,11 @@ addEventListener('unhandledrejection', e => crashed(String(e.reason)));
 
 /* ---------- spel ---------- */
 const LEVELS = [
-  {name: 'Hele uren', minutes: [0]},
-  {name: 'Half', minutes: [0, 30]},
-  {name: 'Kwartier', minutes: [0, 15, 30, 45]},
-  {name: 'Rond de half', minutes: Array.from({length: 12}, (_, i) => i * 5)},
-  {name: 'Digitaal', minutes: Array.from({length: 60}, (_, i) => i), digital: true},
+  {name: 'Hele uren', minutes: [0], step: 60},
+  {name: 'Half', minutes: [0, 30], step: 15},
+  {name: 'Kwartier', minutes: [0, 15, 30, 45], step: 5},
+  {name: 'Rond de half', minutes: Array.from({length: 12}, (_, i) => i * 5), step: 5},
+  {name: 'Digitaal', minutes: Array.from({length: 60}, (_, i) => i), step: 1, digital: true},
 ];
 const GATES = 10, AGAIN = 2, BUILD = new Set([2, 7]), FROZEN = new Set([4, 9]), START = 18 * 60, REACH = 240, HOLD = 350, FAST = 9000;
 
@@ -713,7 +713,8 @@ function hints(now) {
 let dragging = false, lastAngle = 0, hover = null, coach = null, pressed = null;
 const minuteAt = e => { const a = Math.atan2(e.clientX - CX, -(e.clientY - CY)); return mod(a / (Math.PI * 2) * 60, 60); };
 const wrap = d => mod(d + 30, 60) - 30;
-const snap = () => LEVELS[S.level].digital ? 1 : 5;
+/* de grote wijzer klikt per stap van het niveau, zodat de klok alleen tijden zegt die je op dit niveau leert */
+const snap = () => LEVELS[S.level].step;
 
 /* de getallen zijn de uren: tikken of de kleine wijzer slepen zet het uur; de grote wijzer of de rand draaien de minuten */
 const hourAt = e => mod(Math.round(minuteAt(e) / 5), 12) || 12;

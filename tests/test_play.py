@@ -182,6 +182,20 @@ def test_half_by_tapping_the_hour_then_the_six(chromium: Browser, url: str) -> N
     assert errors == []
 
 
+def test_the_half_level_turns_in_quarters(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 1)
+    page.evaluate("S.T = S.P = 11 * 60; S.target = 5 * 60 + 30; renderTarget()")
+    page.mouse.move(*point(page, 0, 0.8))
+    page.mouse.down()
+    for m in range(1, 21):
+        page.mouse.move(*point(page, m / 60 * 2 * math.pi, 0.8))
+    page.mouse.up()
+    assert page.evaluate("mod(S.T, 60)") == 15
+    assert page.inner_text("#live .blocks").split() == ["kwart", "over", "elf"]
+    assert errors == []
+
+
 def test_a_wrong_hour_keeps_taps_on_the_hour(chromium: Browser, url: str) -> None:
     page, errors = open_game(chromium, url)
     start_level(page, 1)
