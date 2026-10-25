@@ -52,6 +52,9 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .live{position:fixed;left:0;right:0;bottom:max(18px,env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;z-index:4;padding:0 16px}
 .live .word{font-size:clamp(16px,2.4vw,24px);padding:8px 12px 9px;border-width:2px;opacity:.92}
 .live .lbl{color:var(--mute)}
+.live.spot .lbl{color:var(--gold);font-size:15px}
+.live.spot .blocks{animation:spot 1s ease-in-out infinite}
+@keyframes spot{50%{transform:scale(1.08);filter:drop-shadow(0 0 12px rgba(255,211,78,.8))}}
 .live .nudge{font:700 clamp(15px,2vw,19px)/1.3 var(--f-main);color:var(--gold);text-align:center;max-width:46ch}
 
 .panel{position:fixed;left:50%;bottom:max(16px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(660px,calc(100% - 28px));z-index:6;
@@ -442,7 +445,8 @@ function update(dt, now) {
   frost.a += (frost.goal - frost.a) * (S.calm ? 1 : Math.min(1, dt / (frost.goal ? 250 : 120)));
   shake *= .86;
 
-  if (S.phase === 'skate') {
+  if (S.phase === 'skate' && coach) coachStep(now);
+  if (S.phase === 'skate' && !coach) {
     if (face(S.T) === face(S.target)) {
       S.holdSince = S.holdSince || now;
       if (now - S.holdSince > HOLD) passGate(now);
@@ -451,7 +455,7 @@ function update(dt, now) {
       S.nudgeSince = S.nudgeSince || now;
       if (now - S.nudgeSince > 1200 && !S.nudged) nudge();
     }
-    if (!S.touched && !coach && now - Math.max(S.gateStart, S.coachEnd) > 8000) startCoach(now);
+    if (!S.touched && now - Math.max(S.gateStart, S.coachEnd) > 8000) startCoach(now);
   }
 }
 
@@ -473,7 +477,6 @@ function draw(now) {
   ctx.drawImage(scratchC, CX - o, CY - o, 2 * o, 2 * o);
 
   if (S.phase === 'skate') { hints(now); highlight(); }
-  if (coach) drawCoach(now);
 
   const ha = mod(S.disp / 60, 12) / 12 * Math.PI * 2, ma = mod(S.disp, 60) / 60 * Math.PI * 2;
   const htip = at(ha, R * .5), mtip = at(ma, R * .8);
@@ -486,6 +489,7 @@ function draw(now) {
   const hs = R / 210 * (1 + hourHop * .5);
   skater(htip[0], htip[1] - hourHop * 14, hs * .8, '#FFD34E', hourPhase, .4 + Math.sin(hourPhase) * .2, Math.cos(ha) >= 0 ? 1 : -1);
   skater(mtip[0], mtip[1], R / 210 * 1.15, '#E8FBFF', phase, speed, Math.cos(ma) * dir >= 0 ? 1 : -1);
+  if (coach) drawCoach(now);
 
   for (const r of rings) { ctx.strokeStyle = `rgba(255,255,255,${r.life * .8})`; ctx.lineWidth = 4 * r.life; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke(); }
   for (const p of parts) {
@@ -529,30 +533,60 @@ function highlight() {
   ctx.restore();
 }
 
-/* voordoen: een spookhand tikt een uur aan en draait de grote wijzer, zonder de klok te verzetten */
+/* voordoen: een spookhand tikt een uur aan, draait de grote wijzer en wijst naar wat de klok zegt; de klok draait echt mee */
+const COACH = [
+  {until: 900, label: ''},
+  {until: 1500, label: 'Tik het uur'},
+  {until: 2700, label: 'De kleine wijzer springt erheen'},
+  {until: 3200, label: ''},
+  {until: 5000, label: 'Draai de grote wijzer'},
+  {until: 5600, label: ''},
+  {until: 7800, label: 'Kijk, hier staat wat jouw klok zegt', below: true},
+  {until: 8300, label: ''},
+];
+const ease = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+const towards = (a, b, p) => [a[0] + (b[0] - a[0]) * ease(p), a[1] + (b[1] - a[1]) * ease(p)];
+
 function startCoach(now) {
-  const n = mod(Math.floor(S.target / 60) + 6, 12) || 12;
-  coach = {t0: now, n, a: mod(S.disp, 60) / 60 * Math.PI * 2};
+  coach = {t0: now, n: mod(Math.floor(S.target / 60) + 6, 12) || 12, base: null, step: -1};
   store.set('coached', true);
 }
+
+function stopCoach(now) { coach = null; S.coachEnd = now; $('#live').classList.remove('spot'); renderLive(); }
+
+function coachStep(now) {
+  const t = now - coach.t0, step = COACH.findIndex(c => t < c.until);
+  if (step < 0 || S.phase !== 'skate') return stopCoach(now);
+  const num = at(coach.n / 12 * Math.PI * 2, R * .74), top = at(0, R * .92), sweep = Math.PI * .7;
+  const words = $('#live .blocks').getBoundingClientRect(), live = [words.left - 34, words.top + words.height / 2];
+  const from = step ? COACH[step - 1].until : 0, p = (t - from) / (COACH[step].until - from);
+  if (coach.base === null && t >= 900) { setHour(coach.n); coach.base = S.T; }
+  if (step === 4) { S.P = coach.base + ease(p) * sweep / (Math.PI * 2) * 60; setT(true); }
+  $('#live').classList.toggle('spot', step >= 5 && step <= 6);
+  coach.pos = [towards([CX, CY + R * 1.2], num, p), num, num, towards(num, top, p), at(ease(p) * sweep, R * .92),
+    towards(at(sweep, R * .92), live, p), live, live][step];
+  coach.label = COACH[step].label; coach.fade = step === 7 ? 1 - p : 1; coach.pulse = step === 1 ? p : 0; coach.small = step === 2;
+  if (step !== coach.step) {
+    coach.step = step; if (coach.label) say(coach.label, true);
+    if (COACH[step].below) $('#live .lbl').textContent = coach.label;
+  }
+}
+
 function drawCoach(now) {
-  const t = now - coach.t0, loop = 4600, k = t % loop;
-  if (t > 2 * loop || S.phase !== 'skate') { coach = null; S.coachEnd = now; return; }
-  const ease = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-  const num = at(coach.n / 12 * Math.PI * 2, R * .74), ring = at(coach.a, R * .92), start = [CX, CY + R * 1.2];
-  let x, y, label = '', pulse = 0;
-  if (k < 1000) { const p = ease(k / 1000); x = start[0] + (num[0] - start[0]) * p; y = start[1] + (num[1] - start[1]) * p; }
-  else if (k < 1800) { [x, y] = num; label = 'Tik het uur'; pulse = (k - 1000) / 800; }
-  else if (k < 2300) { const p = ease((k - 1800) / 500); x = num[0] + (ring[0] - num[0]) * p; y = num[1] + (ring[1] - num[1]) * p; }
-  else if (k < 4000) { [x, y] = at(coach.a + ease((k - 2300) / 1700) * Math.PI * .7, R * .92); label = 'Draai de grote wijzer'; }
-  else { [x, y] = at(coach.a + Math.PI * .7, R * .92); }
-  ctx.save(); ctx.globalAlpha = k > 4000 ? 1 - (k - 4000) / 600 : 1;
-  if (pulse) { ctx.strokeStyle = `rgba(255,211,78,${1 - pulse})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 14 + pulse * 30, 0, Math.PI * 2); ctx.stroke(); }
+  const [x, y] = coach.pos;
+  ctx.save(); ctx.globalAlpha = coach.fade;
+  if (coach.pulse) { ctx.strokeStyle = `rgba(255,211,78,${1 - coach.pulse})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 14 + coach.pulse * 30, 0, Math.PI * 2); ctx.stroke(); }
+  if (coach.small) {
+    const [hx, hy] = at(mod(S.disp / 60, 12) / 12 * Math.PI * 2, R * .5);
+    ctx.strokeStyle = '#FFD34E'; ctx.lineWidth = 3; ctx.setLineDash([6, 6]); ctx.lineDashOffset = -now / 40;
+    ctx.beginPath(); ctx.arc(hx, hy, R * .14, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+  }
   ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  if (label) {
+  if (coach.label && !COACH[coach.step].below) {
     ctx.font = '800 20px Syne, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#fff'; ctx.shadowColor = '#160A36'; ctx.shadowBlur = 10; ctx.fillText(label, x, y - 38);
+    ctx.fillStyle = '#fff'; ctx.shadowColor = '#160A36'; ctx.shadowBlur = 10;
+    ctx.fillText(coach.label, Math.min(Math.max(x, 170), W - 170), y - 40);
   }
   ctx.restore();
 }
@@ -597,7 +631,7 @@ cv.addEventListener('pointerdown', e => {
   audio();
   const z = zone(e);
   if (!z) return;
-  S.touched = true; coach = null;
+  S.touched = true; if (coach) stopCoach(performance.now());
   if (z.kind === 'hour') return setHour(z.n);
   dragging = true; cv.setPointerCapture(e.pointerId);
   const m = minuteAt(e); lastAngle = m;
