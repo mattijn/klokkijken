@@ -149,7 +149,7 @@ def test_back_to_the_levels_mid_round(chromium: Browser, url: str) -> None:
     assert errors == []
 
 
-def test_whole_hours_turn_in_quarters_with_a_loupe_from_kwartier(chromium: Browser, url: str) -> None:
+def test_whole_hours_turn_in_quarters(chromium: Browser, url: str) -> None:
     page, errors = open_game(chromium, url)
     start_level(page, 0)
     page.evaluate("S.T = S.P = 3 * 60; S.target = 7 * 60; renderTarget()")
@@ -167,7 +167,7 @@ def test_whole_hours_turn_in_quarters_with_a_loupe_from_kwartier(chromium: Brows
     for m in range(1, 8):
         page.mouse.move(*point(page, m / 60 * 2 * math.pi, 0.8))
     page.wait_for_timeout(100)
-    assert page.evaluate("dragging") == "minute"
+    assert page.evaluate("[dragging, !!LEVELS[S.level].loupe, !!LEVELS[3].loupe]") == ["minute", False, True]
     page.mouse.up()
     assert errors == []
 
@@ -188,6 +188,22 @@ def test_arrow_keys_turn_the_hands(chromium: Browser, url: str) -> None:
     for _ in range(5):
         page.keyboard.press("ArrowRight")
     page.wait_for_function("S.gate === 1")
+    assert errors == []
+
+
+def test_a_level_party_before_the_stars(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 2)
+    page.evaluate("S.firstTry = 4; S.gate = S.gates; endRun()")
+    assert page.evaluate("[S.phase, party.level]") == ["party", 2]
+    assert page.locator("#end").is_hidden()
+    page.wait_for_function("S.phase === 'end' && party === null")
+    assert page.locator("#end").is_visible()
+    page.click("#again")
+    page.evaluate("S.firstTry = 4; S.gate = S.gates; endRun()")
+    page.click("#t-menu")
+    page.wait_for_timeout(1500)
+    assert page.locator("#end").is_hidden()
     assert errors == []
 
 
@@ -216,7 +232,7 @@ def test_a_new_level_is_chosen_and_started(chromium: Browser, url: str) -> None:
     page.click("#levels-end .lv[data-level='0']")
     assert page.inner_text("#again") == "Nog een rondje"
     page.click("#levels-end .lv[data-level='1']")
-    page.click("#again")
+    page.keyboard.press("Enter")
     page.wait_for_function("S.phase === 'skate'")
     assert page.inner_text("#level") == "HALF"
     assert errors == []

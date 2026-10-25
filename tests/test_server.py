@@ -80,3 +80,8 @@ def test_nudge_names_its_mistake() -> None:
 def test_together_on_the_digital_clock() -> None:
     [step] = post("/together", {"hour": 18, "minute": 37, "digital": True})["steps"]
     assert step["answer"] == "6"
+
+
+def test_the_icons_are_served() -> None:
+    assert client.get("/favicon.png").headers["content-type"] == "image/png"
+    assert client.get("/server.py").status_code == 404

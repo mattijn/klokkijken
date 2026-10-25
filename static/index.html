@@ -14,7 +14,8 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23241258' stroke='%233EE8FF' stroke-width='5'/%3E%3Cpath d='M32 32 L20 39' stroke='%23FFD34E' stroke-width='6' stroke-linecap='round'/%3E%3Cpath d='M32 32 L32 11' stroke='%23fff' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Syne:wght@400;600;700;800&display=swap">
@@ -185,7 +186,6 @@ body.calm *{animation:none!important;transition:none!important}
 <div class="overlay" id="start">
   <div class="card">
     <h1 class="title">IJsbaan-klok</h1>
-    <p>Tik het uur. Draai de grote wijzer.</p>
     <div class="players" id="players"></div>
     <div class="levels" id="levels"></div>
     <button class="btn primary" id="go" type="button">Schaatsen!</button>
@@ -238,8 +238,8 @@ const LEVELS = [
   {name: 'Hele uren', minutes: [0], step: 15},
   {name: 'Half', minutes: [0, 30], step: 15},
   {name: 'Kwartier', minutes: [0, 15, 30, 45], step: 5},
-  {name: 'Rond de half', minutes: Array.from({length: 12}, (_, i) => i * 5), step: 5},
-  {name: 'Digitaal', minutes: Array.from({length: 60}, (_, i) => i), step: 1, digital: true},
+  {name: 'Rond de half', minutes: Array.from({length: 12}, (_, i) => i * 5), step: 5, loupe: true},
+  {name: 'Digitaal', minutes: Array.from({length: 60}, (_, i) => i), step: 1, digital: true, loupe: true},
 ];
 const GATES = 10, AGAIN = 2, BUILD = new Set([2, 7]), FROZEN = new Set([4, 9]), START = 18 * 60, REACH = 240, HOLD = 350, FAST = 9000;
 
@@ -463,21 +463,37 @@ function swoosh(speed) {
 }
 
 /* ---------- schaatser ---------- */
-function skater(x, y, s, color, phase, speed, dir) {
-  ctx.save(); ctx.translate(x, y); ctx.scale(s * dir, s); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = color; ctx.fillStyle = color;
-  const lean = Math.min(speed * .09, .65), sw = Math.sin(phase);
-  const hip = [0, -17], fx = 5 + sw * 7, bx = -7 - sw * 7, lift = Math.max(0, -sw) * 4;
-  ctx.lineWidth = 3.6;
-  ctx.beginPath(); ctx.moveTo(...hip); ctx.lineTo(fx * .5 + 2, -9); ctx.lineTo(fx, 0); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(...hip); ctx.lineTo(bx * .5, -8); ctx.lineTo(bx, -1 - lift); ctx.stroke();
-  ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(fx - 6, 2); ctx.lineTo(fx + 6, 2); ctx.moveTo(bx - 6, 1 - lift); ctx.lineTo(bx + 6, 1 - lift); ctx.stroke();
-  const sh = [hip[0] + Math.sin(lean) * 15, hip[1] - Math.cos(lean) * 15];
-  ctx.lineWidth = 4.4; ctx.beginPath(); ctx.moveTo(...hip); ctx.lineTo(...sh); ctx.stroke();
-  ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(...sh); ctx.lineTo(sh[0] + 9 * Math.cos(phase), sh[1] + 7); ctx.moveTo(...sh); ctx.lineTo(sh[0] - 9 * Math.cos(phase), sh[1] + 7); ctx.stroke();
-  ctx.beginPath(); ctx.arc(sh[0] + Math.sin(lean) * 4, sh[1] - 7, 5.5, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#FF4FB3'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(sh[0], sh[1] - 2);
-  for (let i = 1; i <= 3; i++) ctx.lineTo(sh[0] - i * (3 + speed * .9), sh[1] - 2 + Math.sin(phase * 2 + i) * (1 + speed * .25));
-  ctx.stroke(); ctx.restore();
+/* een hardrijder van opzij, in pak, muts en sjaal: diep gebogen bij snelheid, afzetten met het ene been terwijl het
+   andere glijdt */
+const SKIN = '#FFD9B8', BOOT = '#1A1030', BLADE = '#DCEBFF';
+function skater(x, y, s, suit, accent, phase, speed, dir) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s * dir, s); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const limb = (a, b, w, color) => { ctx.strokeStyle = color; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke(); };
+  const bend = Math.min(.35 + speed * .12, 1.05), sw = Math.sin(phase);
+  const hip = [0, -18 + bend * 4];
+  const leg = side => {
+    const fx = 3 + side * sw * 9, lift = Math.max(0, -side * sw) * 5, foot = [fx, -2 - lift];
+    const knee = [(hip[0] + fx) / 2 + 4 + bend * 3, (hip[1] + foot[1]) / 2 - 1];
+    limb(hip, knee, 5.2, suit); limb(knee, foot, 4.6, suit);
+    limb([fx - 2.5, foot[1]], [fx + 3.5, foot[1]], 4, BOOT);
+    limb([fx - 6, foot[1] + 3], [fx + 7, foot[1] + 3], 1.6, BLADE);
+  };
+  const shoulder = [hip[0] + Math.sin(bend) * 15, hip[1] - Math.cos(bend) * 15];
+  const up = [Math.sin(bend), -Math.cos(bend)], head = [shoulder[0] + up[0] * 7 + 1.5, shoulder[1] + up[1] * 7];
+  const arm = side => [shoulder[0] - up[0] * 4 + side * 9 * Math.cos(phase), shoulder[1] + 9 - Math.abs(side * Math.sin(phase)) * 2];
+  leg(-1);
+  limb(shoulder, arm(-1), 3.6, suit);
+  limb(hip, shoulder, 7, suit);
+  leg(1);
+  ctx.strokeStyle = accent; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(shoulder[0], shoulder[1] - 1);
+  for (let i = 1; i <= 3; i++) ctx.lineTo(shoulder[0] - i * (3 + speed * .9), shoulder[1] - 1 + Math.sin(phase * 2 + i) * (1 + speed * .25));
+  ctx.stroke();
+  ctx.fillStyle = SKIN; ctx.beginPath(); ctx.arc(...head, 5.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(head[0], head[1] - .8, 5.6, Math.PI * 1.02, Math.PI * 1.98); ctx.fill();
+  ctx.beginPath(); ctx.arc(head[0] - 1, head[1] - 7, 2.2, 0, Math.PI * 2); ctx.fill();
+  limb(shoulder, arm(1), 3.6, suit);
+  ctx.fillStyle = SKIN; ctx.beginPath(); ctx.arc(...arm(1), 1.9, 0, Math.PI * 2); ctx.arc(...arm(-1), 1.9, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 }
 
 /* ---------- tekenen ---------- */
@@ -487,7 +503,7 @@ function frame(now) {
   const dt = Math.max(1, Math.min(50, now - lastT)); lastT = now;
   geometry(false);
   const frozenTime = now < stopUntil;
-  if (!frozenTime) update(dt, now);
+  if (!frozenTime) update(dt * (party ? party.slow : 1), now);
   draw(now);
   requestAnimationFrame(frame);
 }
@@ -572,15 +588,16 @@ function draw(now) {
   ctx.beginPath(); ctx.arc(...mtip, Math.max(14, R * .075), 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
   ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(CX, CY, Math.max(6, R * .035), 0, Math.PI * 2); ctx.fill();
   const hs = R / 210 * (1 + hourHop * .5);
-  skater(htip[0], htip[1] - hourHop * 14, hs * .8, '#FFD34E', hourPhase, .4 + Math.sin(hourPhase) * .2, Math.cos(ha) >= 0 ? 1 : -1);
-  skater(mtip[0], mtip[1], R / 210 * 1.15, '#E8FBFF', phase, speed, Math.cos(ma) * dir >= 0 ? 1 : -1);
+  skater(htip[0], htip[1] - hourHop * 14, hs * .8, '#3EE8FF', '#FF4FB3', hourPhase, .4 + Math.sin(hourPhase) * .2, Math.cos(ha) >= 0 ? 1 : -1);
+  skater(mtip[0], mtip[1], R / 210 * 1.15, '#FF4FB3', '#FFD34E', phase, speed, Math.cos(ma) * dir >= 0 ? 1 : -1);
   if (bigTurn()) {
     ctx.save(); ctx.strokeStyle = '#FFD34E'; ctx.lineWidth = 3; ctx.globalAlpha = .5 + .5 * Math.sin(now / 220);
     ctx.beginPath(); ctx.arc(...mtip, Math.max(22, R * .12), 0, Math.PI * 2); ctx.stroke(); ctx.restore();
   }
-  if ((dragging === 'minute' || now - keyed < 1500) && snap() < 15) loupe(ma);
+  if ((dragging === 'minute' || now - keyed < 1500) && LEVELS[S.level].loupe) loupe(ma);
   }
   if (coach) drawCoach(now);
+  if (party) drawParty(now);
 
   for (const r of rings) { ctx.strokeStyle = `rgba(255,255,255,${r.life * .8})`; ctx.lineWidth = 4 * r.life; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke(); }
   for (const p of parts) {
@@ -825,6 +842,8 @@ cv.addEventListener('pointercancel', () => { dragging = false; });
 const KEYS = {ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowUp: [0, 60], ArrowDown: [0, -60]};
 let keyed = -Infinity;
 document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !$('#end').hidden) return $('#again').click();
+  if (e.key === 'Enter' && !$('#start').hidden && e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') return $('#go').click();
   if (S.phase !== 'skate' || !(e.key in KEYS)) return;
   e.preventDefault(); audio();
   S.touched = true; if (coach) stopCoach(performance.now());
@@ -869,7 +888,7 @@ let hits = new Set();
 function renderTarget(cls = 'enter') {
   const el = $('#target');
   if (BUILD.has(S.gate) && (S.phase === 'spin' || S.phase === 'build')) {
-    el.innerHTML = `<span class="lbl">Bouw de zin</span>${LEVELS[S.level].digital ? `<span class="digital">${hhmm(S.target)}</span>` : ''}`;
+    el.innerHTML = `<span class="lbl">Bouw de tijd</span>${LEVELS[S.level].digital ? `<span class="digital">${hhmm(S.target)}</span>` : ''}`;
   } else if (S.phase === 'frozen' || S.phase === 'spin') {
     el.innerHTML = `<span class="frozen-lbl">Bevroren!</span>${LEVELS[S.level].digital ? `<span class="digital">${hhmm(S.target)}</span>` : ''}`;
   } else if (LEVELS[S.level].digital) {
@@ -937,7 +956,7 @@ function startRun() {
 /* terug naar het beginscherm, midden in een ronde */
 function stopRun() {
   if (coach) stopCoach(performance.now());
-  S.phase = 'start'; blast = null; frost.goal = 0; panel.hidden = true; $('#target').innerHTML = '';
+  S.phase = 'start'; blast = null; party = null; frost.goal = 0; panel.hidden = true; $('#target').innerHTML = '';
   renderLive(); renderHud(); renderLevels('#levels'); $('#end').hidden = true; $('#start').hidden = false;
 }
 
@@ -981,7 +1000,111 @@ function endRun() {
     : 'De helft in één keer goed? Dan mag je verder.');
   renderLevels('#levels-end');
   $('#target').innerHTML = '';
+  if (stars < 2) return showEnd(stars);
+  S.phase = 'party'; party = {t0: performance.now(), dur: S.calm ? 1200 : 4600, level: S.played, slow: 1, jumped: false, cheered: false};
+  setTimeout(showEnd, party.dur, stars);
+}
+
+function showEnd(stars) {
+  if (S.phase === 'start') return;
+  S.phase = 'end'; party = null;
   $('#end').hidden = false; SFX.fanfare(); cannons(40 + stars * 30);
+}
+
+/* dezelfde schaatser van voren (of van achteren, zonder gezicht), juichend: elk niveau met een eigen gebaar */
+function skaterFront(x, y, s, suit, accent, pose, t, face) {
+  ctx.save(); ctx.translate(x, y - Math.abs(Math.sin(t * 7)) * 3 * s); ctx.scale(s, s); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const limb = (a, b, w, color) => { ctx.strokeStyle = color; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke(); };
+  const wig = Math.sin(t * 9), hands = {
+    v: [[-12, -45 + wig * 2], [12, -45 - wig * 2]],
+    wave: [[-9, -21], [13 + wig * 4, -46]],
+    pump: [[-8, -22], [10, -42 - Math.max(0, wig) * 6]],
+    clap: [[-2 - Math.abs(wig) * 6, -47], [2 + Math.abs(wig) * 6, -47]],
+    star: [[-17, -36 + wig * 3], [17, -36 - wig * 3]],
+  }[pose];
+  for (const side of [-1, 1]) {
+    const hip = [side * 3, -17], knee = [side * 5.5, -8.5], foot = [side * 7.5, -1];
+    limb(hip, knee, 5.2, suit); limb(knee, foot, 4.6, suit);
+    limb([side * 7.5 - 2.5, foot[1]], [side * 7.5 + 2.5, foot[1]], 4, BOOT);
+    limb([side * 7.5 - 4, foot[1] + 3], [side * 7.5 + 4, foot[1] + 3], 1.6, BLADE);
+  }
+  limb([0, -18], [0, -29], 10, suit);
+  hands.forEach(([hx, hy], i) => {
+    const sh = [i ? 5 : -5, -29], elbow = [(sh[0] + hx) / 2 + (i ? 3 : -3), (sh[1] + hy) / 2 + 2];
+    limb(sh, elbow, 3.8, suit); limb(elbow, [hx, hy], 3.6, suit);
+    ctx.fillStyle = SKIN; ctx.beginPath(); ctx.arc(hx, hy, 2, 0, Math.PI * 2); ctx.fill();
+  });
+  limb([-5, -31.5], [5, -31.5], 3.4, accent);
+  limb([3, -31], [5 + Math.sin(t * 6) * 2, -24], 3, accent);
+  ctx.fillStyle = SKIN; ctx.beginPath(); ctx.arc(0, -37.5, 5.4, 0, Math.PI * 2); ctx.fill();
+  if (face) {
+    ctx.fillStyle = BOOT; ctx.beginPath(); ctx.arc(-1.9, -37.5, .8, 0, Math.PI * 2); ctx.arc(1.9, -37.5, .8, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = BOOT; ctx.lineWidth = .9; ctx.beginPath(); ctx.arc(0, -36, 2.4, .2 * Math.PI, .8 * Math.PI); ctx.stroke();
+  }
+  ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(0, -38.3, 5.8, Math.PI * (face ? 1.02 : .9), Math.PI * (face ? 1.98 : 2.1)); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -45, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+/* de schaatser zoals een camera die om hem heen draait hem ziet: yaw 0 is van voren, een kwart slag van opzij */
+function turntable(x, y, s, yaw, pose, t, speed) {
+  const front = Math.cos(yaw), side = Math.sin(yaw);
+  ctx.save(); ctx.translate(x, y);
+  if (Math.abs(front) >= Math.abs(side)) {
+    ctx.scale(Math.max(.3, Math.abs(front)), 1);
+    skaterFront(0, 0, s, '#FF4FB3', '#FFD34E', pose, t, front > 0);
+  } else {
+    ctx.scale(Math.max(.3, Math.abs(side)), 1);
+    skater(0, 0, s, '#FF4FB3', '#FFD34E', t * 11, speed, Math.sign(side));
+  }
+  ctx.restore();
+}
+
+/* niveau gehaald: de schaatser komt van links, springt, en in slowmotion draait de camera om hem heen (de confetti blijft
+   hangen); hij landt met zijn gezicht naar je toe en juicht. Elk niveau draait anders en juicht anders. */
+const PARTIES = [
+  {pose: 'v', turns: 1, way: 1, tilt: 0},
+  {pose: 'wave', turns: 1, way: -1, tilt: .06},
+  {pose: 'pump', turns: 2, way: 1, tilt: -.06},
+  {pose: 'clap', turns: 2, way: -1, tilt: .1},
+  {pose: 'star', turns: 3, way: 1, tilt: -.1},
+];
+let party = null;
+const span = (t, a, b) => Math.min(1, Math.max(0, (t - a) / (b - a)));
+
+function drawParty(now) {
+  const t = Math.min(1, (now - party.t0) / party.dur), look = PARTIES[party.level], size = Math.min(W, H) / 170;
+  const ground = H * .64, skate = span(t, 0, .22), rise = span(t, .22, .3), orbit = span(t, .3, .74), drop = span(t, .74, .8);
+  const zoom = 1 + .45 * Math.sin(Math.PI * span(t, .26, .8)), calm = S.calm;
+  const sweep = look.way > 0 ? 2 * Math.PI * look.turns - Math.PI / 2 : -(Math.PI / 2 + 2 * Math.PI * (look.turns - 1));
+  const yaw = calm ? 0 : Math.PI / 2 + ease(orbit) * sweep;
+  const air = ground - (Math.sin(Math.PI / 2 * rise) * (1 - drop)) * H * .12 - Math.sin(Math.PI * orbit) * H * .02;
+  const x = -60 + (W / 2 + 60) * (1 - Math.pow(1 - skate, 2));
+  party.slow = orbit > 0 && orbit < 1 && !calm ? .12 : 1;
+  ctx.save(); ctx.fillStyle = `rgba(22,10,54,${Math.min(.7, t * 3)})`; ctx.fillRect(0, 0, W, H); ctx.restore();
+  ctx.save();
+  const focus = [x, air - 20 * size];
+  ctx.translate(...focus); ctx.rotate(look.tilt * Math.sin(Math.PI * span(t, .26, .8))); ctx.scale(zoom, zoom); ctx.translate(-focus[0], -focus[1]);
+  if (party.slow < 1) {
+    ctx.save(); ctx.strokeStyle = 'rgba(62,232,255,.18)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 24; i++) {
+      const a = i / 24 * Math.PI * 2 + yaw * .5, r0 = 60 * size, r1 = r0 + 25 * size * (1 + (i % 3));
+      ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r0, air - 20 * size + Math.sin(a) * r0); ctx.lineTo(x + Math.cos(a) * r1, air - 20 * size + Math.sin(a) * r1); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.save(); ctx.translate(x, ground + 2 * size); ctx.scale(1, .22);
+  ctx.strokeStyle = 'rgba(62,232,255,.5)'; ctx.lineWidth = 3 / .22; ctx.beginPath(); ctx.arc(0, 0, 34 * size, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = '#FFD34E';
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + yaw; if (Math.sin(a) > 0) { ctx.beginPath(); ctx.arc(Math.cos(a) * 34 * size, Math.sin(a) * 34 * size, 1.6 * size, 0, Math.PI * 2); ctx.fill(); } }
+  ctx.restore();
+  turntable(x, air, size, t < .22 ? Math.PI / 2 : yaw, look.pose, now / 1000, skate < 1 ? 7 : 1);
+  ctx.restore();
+  if (rise > 0 && !party.jumped) { party.jumped = true; burst(x, air - 20 * size, 140, 13); SFX.hop(); }
+  if (drop >= 1 && !party.cheered) {
+    party.cheered = true;
+    floatText(W / 2, ground - 75 * size, 'Wieeew!', '#FFD34E'); burst(W / 2, ground - 30 * size, 90, 10); SFX.gate(5); kick(10, 0);
+  }
 }
 
 function renderLevels(sel) {
@@ -1150,7 +1273,7 @@ async function build(lead = 'Tik de tijd.') {
     S.together = true; $('#built').insertAdjacentHTML('beforebegin', example()); e.target.parentElement.remove();
   });
 }
-const example = () => `<p class="sub">Zo gaat de zin:</p><div class="ghost-line">${blocks(PHRASES[face(S.target)])}</div>`;
+const example = () => `<p class="sub">Zo gaat de tijd:</p><div class="ghost-line">${blocks(PHRASES[face(S.target)])}</div>`;
 
 async function tap(block) {
   const {word, digit} = block.dataset;
