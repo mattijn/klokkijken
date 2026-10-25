@@ -146,7 +146,7 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .lv b{font:400 20px/1 var(--f-neon);color:var(--gold)}
 .lv[aria-pressed="true"]{border-color:var(--pink);color:#fff;box-shadow:0 0 22px rgba(255,79,179,.35)}
 .lv:disabled{opacity:.35;cursor:not-allowed}
-.trail{position:relative;width:min(640px,100%);height:200px}
+.trail{position:relative;width:min(640px,100%);height:240px}
 .trail canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .trail .lv{position:absolute;transform:translate(-50%,-22px);flex-direction:column;gap:3px;padding:0;border:0;width:84px;text-align:center;font:700 13px/1.15 var(--f-main)}
 .trail .lv b{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;border:3px solid var(--c);background:var(--night-2);font-size:19px}
@@ -1190,8 +1190,8 @@ function drawParty(now) {
    heeft de kleur van de sterren op dat niveau, zodat je ziet waar nog goud te halen is ---------- */
 const TRAIL = ['rgba(205,187,255,.55)', '#E39A5F', '#DCE6F5', '#FFD34E'], LOCKED = 'rgba(205,187,255,.16)', CUP = .95;
 const stop = i => { const u = .07 + .185 * i; return [u, trailY(u)]; };
-function trailY(u) { return .47 - .12 * Math.cos((u - .07) / .185 * Math.PI); }
-const trail = {u: null, hold: 0, phase: 0};
+function trailY(u) { return .56 - .1 * Math.cos((u - .07) / .185 * Math.PI); }
+const trail = {u: null, hold: 0, phase: 0, speed: 0, dir: 1};
 
 /* het flyboard: van de landingsplek omhoog, een rondje door het scherm met waterstralen, dan recht op je af tot hij het
    glas raakt; daar blijft hij even plakken en glijdt omlaag, en het scherm heeft een barst */
@@ -1293,11 +1293,14 @@ function drawTrail(now, dt) {
   ctx.restore();
   const goal = stop(S.level)[0];
   if (trail.u === null) trail.u = goal;
-  const moving = now > trail.hold && Math.abs(goal - trail.u) > .002;
-  if (moving) trail.u += (goal - trail.u) * Math.min(1, dt / 420);
-  trail.phase += dt * (moving ? .02 : .004);
+  /* de beentjes gaan zo snel als hij echt schaatst: op gang komen, glijden en bij het niveau rustig uitbollen */
+  const left = goal - trail.u, step = now > trail.hold ? Math.sign(left) * Math.min(Math.abs(left), dt * .0005 * Math.min(1, .25 + Math.abs(left) / .06)) : 0;
+  trail.u += step;
+  const pace = Math.abs(step) * w / dt;
+  trail.speed = trail.speed * .85 + pace * 2.2 * .15; trail.phase += dt * .004 + Math.abs(step) * w * .12;
+  if (step) trail.dir = Math.sign(step);
   const [sx, sy] = pt(trail.u);
-  skater(sx, sy - 24, Math.min(1.35, w / 420), '#FF4FB3', '#FFD34E', trail.phase, moving ? 3 : .3, moving && goal < trail.u ? -1 : 1);
+  skater(sx, sy - 24, Math.min(1.35, w / 420), '#FF4FB3', '#FFD34E', trail.phase, .3 + Math.min(3, trail.speed), trail.dir);
   ctx = main;
 }
 
