@@ -123,6 +123,74 @@ def test_a_round_per_level(chromium: Browser, url: str, level: int) -> None:
     assert errors == []
 
 
+def test_a_right_time_bursts_the_rink_before_the_next(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 0)
+    skate(page)
+    page.wait_for_function("blast !== null")
+    assert page.evaluate("S.phase") == "between"
+    page.wait_for_function("S.phase === 'skate' && blast === null")
+    assert errors == []
+
+
+def test_back_to_the_levels_mid_round(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 2)
+    page.evaluate("S.gate = 4; nextGate()")
+    page.wait_for_selector("#answer")
+    page.click("#t-menu")
+    assert page.locator("#start").is_visible()
+    assert page.locator("#panel").is_hidden()
+    assert page.evaluate("[S.phase, frost.goal]") == ["start", 0]
+    page.click("#levels .lv[data-level='0']")
+    page.click("#go")
+    page.wait_for_function("S.phase === 'skate'")
+    assert page.inner_text("#level") == "HELE UREN"
+    assert errors == []
+
+
+def test_whole_hours_turn_in_quarters_with_a_loupe_from_kwartier(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 0)
+    page.evaluate("S.T = S.P = 3 * 60; S.target = 7 * 60; renderTarget()")
+    page.mouse.move(*point(page, 0, 0.8))
+    page.mouse.down()
+    for m in range(1, 18):
+        page.mouse.move(*point(page, m / 60 * 2 * math.pi, 0.8))
+    page.mouse.up()
+    assert page.evaluate("mod(S.T, 60)") == 15
+    page.click("#t-menu")
+    start_level(page, 2)
+    page.evaluate("S.T = S.P = 3 * 60; S.target = 7 * 60 + 45; renderTarget()")
+    page.mouse.move(*point(page, 0, 0.8))
+    page.mouse.down()
+    for m in range(1, 8):
+        page.mouse.move(*point(page, m / 60 * 2 * math.pi, 0.8))
+    page.wait_for_timeout(100)
+    assert page.evaluate("dragging") == "minute"
+    page.mouse.up()
+    assert errors == []
+
+
+def test_arrow_keys_turn_the_hands(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 4)
+    page.evaluate("S.T = S.P = 9 * 60 + 40; S.target = 9 * 60 + 47; renderTarget()")
+    for _ in range(3):
+        page.keyboard.press("ArrowRight")
+    page.keyboard.press("ArrowLeft")
+    assert page.evaluate("S.T") == 9 * 60 + 42
+    page.keyboard.press("ArrowUp")
+    page.keyboard.press("ArrowUp")
+    page.keyboard.press("ArrowDown")
+    assert page.evaluate("S.T") == 10 * 60 + 42
+    page.keyboard.press("ArrowDown")
+    for _ in range(5):
+        page.keyboard.press("ArrowRight")
+    page.wait_for_function("S.gate === 1")
+    assert errors == []
+
+
 def test_taking_back_a_block(chromium: Browser, url: str) -> None:
     page, errors = open_game(chromium, url)
     start_level(page, 2)

@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="engine" content="server">
 <title>IJsbaan-klok</title>
-<meta name="description" content="Leer klokkijken als schaatsspel: tik het uur en draai de grote wijzer. Gratis in de browser, zonder account.">
+<meta name="description" content="Een schaatsspel om klokkijken te oefenen. Tik het uur, draai de grote wijzer en laat de ijsbaan uit elkaar spatten.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="IJsbaan-klok">
-<meta property="og:description" content="Leer klokkijken als schaatsspel: tik het uur en draai de grote wijzer. Gratis in de browser, zonder account.">
+<meta property="og:description" content="Een schaatsspel om klokkijken te oefenen. Tik het uur, draai de grote wijzer en laat de ijsbaan uit elkaar spatten.">
 <meta property="og:url" content="https://mattijn.github.io/klokkijken/">
 <meta property="og:image" content="https://mattijn.github.io/klokkijken/og.jpg">
 <meta property="og:image:width" content="1200">
@@ -45,6 +45,7 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .dot.done{background:var(--cyan);border-color:var(--cyan)}
 .chip{all:unset;cursor:pointer;font:700 13px/1 var(--f-main);color:var(--lilac);border:1.5px solid var(--line);border-radius:999px;padding:9px 13px;white-space:nowrap}
 .chip[aria-pressed="false"]{opacity:.55}
+.hud .chip{display:inline-flex;align-items:center;gap:6px}
 .level{font:700 13px/1 var(--f-main);letter-spacing:.14em;text-transform:uppercase;color:var(--lilac);white-space:nowrap}
 
 .target{position:fixed;left:0;right:0;top:64px;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;z-index:4;padding:0 16px}
@@ -103,7 +104,7 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .tile small,.tray .word small{font:700 13px/1 var(--f-main);letter-spacing:.02em;opacity:.85}
 .tray .word:hover{border-color:var(--cyan)}
 .tray .word[hidden]{display:none}
-.built .back{padding:12px 16px;font-size:24px}
+.built .back{padding:11px 14px;display:inline-flex;color:var(--lilac)}
 .tray .word.nope{animation:wobble-x .35s}
 @keyframes wobble-x{25%{transform:translateX(-8px)}50%{transform:translateX(6px)}75%{transform:translateX(-3px)}}
 .steps{display:flex;gap:6px}.steps b{width:26px;height:6px;border-radius:3px;background:var(--line)}.steps b.on{background:var(--cyan)}
@@ -157,6 +158,7 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 body.calm *{animation:none!important;transition:none!important}
 @media (max-width:640px){.hud .level{display:none}.dot{width:10px;height:10px}.dots{gap:5px}}
 @media (max-width:480px){
+  .hud .chip span{display:none}
   .hud{gap:8px;padding-left:12px;padding-right:12px}.hud .right{gap:6px}.chip{padding:7px 9px;font-size:12px}.dot{width:8px;height:8px}.dots{gap:4px}
   .panel{padding:14px 16px;border-radius:20px}.panel .ask{font-size:18px}
   .built{min-height:46px;margin:4px 0 10px;gap:8px}.built .slot{width:52px;height:44px}
@@ -171,8 +173,9 @@ body.calm *{animation:none!important;transition:none!important}
   <div class="left"><span class="score" id="score">0</span><span class="combo" id="combo"></span></div>
   <div class="dots" id="dots" aria-label="Poorten"></div>
   <div class="right"><span class="level" id="level"></span>
-    <button class="chip" id="t-sound" type="button" aria-pressed="true">Geluid</button>
-    <button class="chip" id="t-calm" type="button" aria-pressed="false">Rustig</button></div>
+    <button class="chip" id="t-menu" type="button" aria-label="Niveaus"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg><span>Niveaus</span></button>
+    <button class="chip" id="t-sound" type="button" aria-pressed="true" aria-label="Geluid"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg><span>Geluid</span></button>
+    <button class="chip" id="t-calm" type="button" aria-pressed="false" aria-label="Rustig"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg><span>Rustig</span></button></div>
 </div>
 
 <div class="target" id="target"></div>
@@ -232,7 +235,7 @@ addEventListener('unhandledrejection', e => crashed(String(e.reason)));
 
 /* ---------- spel ---------- */
 const LEVELS = [
-  {name: 'Hele uren', minutes: [0], step: 60},
+  {name: 'Hele uren', minutes: [0], step: 15},
   {name: 'Half', minutes: [0, 30], step: 15},
   {name: 'Kwartier', minutes: [0, 15, 30, 45], step: 5},
   {name: 'Rond de half', minutes: Array.from({length: 12}, (_, i) => i * 5), step: 5},
@@ -553,14 +556,15 @@ function draw(now) {
   ctx.save(); ctx.shadowColor = '#3EE8FF'; ctx.shadowBlur = S.calm ? 10 : 28 + 8 * Math.sin(now / 600);
   ctx.strokeStyle = '#3EE8FF'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(CX, CY, R + 6, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
   const k = R / RB, o = (RB + 20) * k;
-  ctx.drawImage(rinkC, CX - o, CY - o, 2 * o, 2 * o);
-  ctx.drawImage(scratchC, CX - o, CY - o, 2 * o, 2 * o);
+  if (blast) burstRink(now, o);
+  else { ctx.drawImage(rinkC, CX - o, CY - o, 2 * o, 2 * o); ctx.drawImage(scratchC, CX - o, CY - o, 2 * o, 2 * o); }
 
   if (LEVELS[S.level].digital || S.phase === 'frozen') ring24();
   if (S.phase === 'skate') { hints(now); highlight(now); }
 
   const ha = mod(S.disp / 60, 12) / 12 * Math.PI * 2, ma = mod(S.disp, 60) / 60 * Math.PI * 2;
   const htip = at(ha, R * .5), mtip = at(ma, R * .8);
+  if (!blast) {
   ctx.lineCap = 'round';
   ctx.strokeStyle = '#FFD34E'; ctx.lineWidth = Math.max(6, R * .045); ctx.beginPath(); ctx.moveTo(CX, CY); ctx.lineTo(...htip); ctx.stroke();
   ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = Math.max(4, R * .028); ctx.beginPath(); ctx.moveTo(CX, CY); ctx.lineTo(...mtip); ctx.stroke();
@@ -573,6 +577,8 @@ function draw(now) {
   if (bigTurn()) {
     ctx.save(); ctx.strokeStyle = '#FFD34E'; ctx.lineWidth = 3; ctx.globalAlpha = .5 + .5 * Math.sin(now / 220);
     ctx.beginPath(); ctx.arc(...mtip, Math.max(22, R * .12), 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
+  if ((dragging === 'minute' || now - keyed < 1500) && snap() < 15) loupe(ma);
   }
   if (coach) drawCoach(now);
 
@@ -610,6 +616,42 @@ function ring24() {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (let n = 1; n <= 12; n++) ctx.fillText(n + 12, ...at(n / 12 * Math.PI * 2, R * .6));
   ctx.restore();
+}
+
+/* een goede tijd: de ijsbaan spat in taartpunten uit elkaar en valt weer samen, schoon voor de volgende tijd */
+let blast = null;
+function burstRink(now, o) {
+  const p = Math.min(1, (now - blast.t0) / blast.dur), out = p < .5 ? ease(p / .5) : 1 - ease((p - .5) / .5);
+  const far = R * (S.calm ? .12 : .9) * out, n = blast.spins.length;
+  blast.spins.forEach((spin, i) => {
+    const a0 = i / n * Math.PI * 2, mid = a0 + Math.PI / n;
+    ctx.save(); ctx.globalAlpha = 1 - out * .4;
+    ctx.translate(CX + Math.sin(mid) * far, CY - Math.cos(mid) * far); ctx.rotate(spin * out); ctx.translate(-CX, -CY);
+    ctx.beginPath(); ctx.moveTo(CX, CY); ctx.arc(CX, CY, o, a0 - Math.PI / 2, a0 - Math.PI / 2 + Math.PI * 2 / n); ctx.closePath(); ctx.clip();
+    ctx.drawImage(rinkC, CX - o, CY - o, 2 * o, 2 * o); ctx.restore();
+  });
+  if (p >= 1) blast = null;
+}
+
+/* bij het draaien van de minuten: een loep op de rand, met elk minuutstreepje genummerd */
+function loupe(a) {
+  const r = Math.max(60, R * .3), zoom = 1.7, rim = R * .88, [tx, ty] = at(a, rim), [lx, ly] = at(a, rim - r - Math.max(34, R * .12));
+  const now = mod(S.T, 60), line = (m, from, to) => { ctx.beginPath(); ctx.moveTo(...at(m / 60 * Math.PI * 2, from)); ctx.lineTo(...at(m / 60 * Math.PI * 2, to)); ctx.stroke(); };
+  ctx.save();
+  ctx.beginPath(); ctx.arc(lx, ly, r, 0, Math.PI * 2); ctx.fillStyle = '#24125A'; ctx.fill(); ctx.clip();
+  ctx.translate(lx, ly); ctx.scale(zoom, zoom); ctx.translate(-tx, -ty);
+  ctx.lineCap = 'round'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let d = -6; d <= 6; d++) {
+    const m = mod(now + d, 60), big = m % 5 === 0;
+    ctx.strokeStyle = big ? '#FFFFFF' : 'rgba(205,187,255,.9)'; ctx.lineWidth = (big ? 5 : 3) / zoom; line(m, R * (big ? .87 : .9), R * .97);
+    ctx.font = `800 ${r * (d ? .17 : .24) / zoom}px Syne, sans-serif`; ctx.fillStyle = d ? '#FFFFFF' : '#FFD34E';
+    if (Math.abs(d) <= 3) ctx.fillText(m, ...at(m / 60 * Math.PI * 2, R * .8));
+  }
+  ctx.strokeStyle = '#FFD34E'; ctx.lineWidth = 3 / zoom; line(now, R * .84, R * .98);
+  ctx.strokeStyle = '#3EE8FF'; ctx.lineWidth = 4 / zoom; ctx.beginPath(); ctx.arc(CX, CY, R + 6, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+  ctx.save(); ctx.strokeStyle = '#3EE8FF'; ctx.lineWidth = 3; ctx.shadowColor = '#3EE8FF'; ctx.shadowBlur = 12;
+  ctx.beginPath(); ctx.arc(lx, ly, r, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
 }
 
 function highlight(now) {
@@ -778,6 +820,19 @@ cv.addEventListener('pointermove', e => {
 cv.addEventListener('pointerup', () => { if (dragging === 'maybe') tapNumber(pressed.n); dragging = false; });
 cv.addEventListener('pointercancel', () => { dragging = false; });
 
+/* met een toetsenbord: links en rechts draaien de grote wijzer een stap (de loep komt even in beeld), omhoog en omlaag
+   zetten de kleine wijzer een uur verder of terug en laten de minuten staan */
+const KEYS = {ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowUp: [0, 60], ArrowDown: [0, -60]};
+let keyed = -Infinity;
+document.addEventListener('keydown', e => {
+  if (S.phase !== 'skate' || !(e.key in KEYS)) return;
+  e.preventDefault(); audio();
+  S.touched = true; if (coach) stopCoach(performance.now());
+  const [step, hour] = KEYS[e.key];
+  if (hour) { S.usedHour = true; S.tapped = true; S.tip = ''; } else keyed = performance.now();
+  S.P = S.T + step * snap() + hour; setT(true);
+});
+
 function playerHour(n) { S.usedHour = true; S.tapped = true; S.tip = ''; setHour(n); renderLive(); }
 
 /* na een getikt uur dat klopt is de grote wijzer aan de beurt: een tik op een getal draait hem daarheen */
@@ -879,7 +934,15 @@ function startRun() {
   nextGate();
 }
 
+/* terug naar het beginscherm, midden in een ronde */
+function stopRun() {
+  if (coach) stopCoach(performance.now());
+  S.phase = 'start'; blast = null; frost.goal = 0; panel.hidden = true; $('#target').innerHTML = '';
+  renderLive(); renderHud(); renderLevels('#levels'); $('#end').hidden = true; $('#start').hidden = false;
+}
+
 function nextGate() {
+  if (S.phase === 'start') return;
   renderHud(); S.slips = []; S.example = null; S.together = false; S.tapped = false; S.offer = false;
   if (S.gate === S.gates) return endRun();
   if (BUILD.has(S.gate)) return startBuild();
@@ -895,11 +958,13 @@ function passGate(now) {
   S.combo = S.together ? 0 : now - S.gateStart < FAST ? S.combo + 1 : 1; S.best = Math.max(S.best, S.combo);
   const pts = S.together ? 50 : 100 * Math.min(S.combo, 5); S.score += pts;
   const [x, y] = at(mod(S.T, 60) / 60 * Math.PI * 2, R * .8);
-  burst(x, y, 60); rings.push({x, y, r: 10, life: 1}); floatText(x, y - 40, `+${pts}`);
-  kick(12, 90); SFX.gate(S.combo); popCombo();
+  burst(x, y, 60); burst(CX, CY, 50, 11); rings.push({x, y, r: 10, life: 1}); floatText(x, y - 40, `+${pts}`);
+  kick(14, 90); SFX.gate(S.combo); SFX.shatter(); popCombo();
+  blast = {t0: now, dur: S.calm ? 500 : 1400, spins: Array.from({length: 12}, () => (Math.random() - .5) * 1.4)};
+  scratchC.getContext('2d').clearRect(0, 0, 2 * RB + 40, 2 * RB + 40);
   $('#target').lastElementChild.classList.add('leave');
   S.gate++; S.phase = 'between';
-  setTimeout(nextGate, S.calm ? 150 : 420);
+  setTimeout(nextGate, blast.dur);
 }
 
 function endRun() {
@@ -952,7 +1017,7 @@ async function api(path, body) {
   if (!r.ok) throw new Error(`${path} gaf ${r.status}: ${await r.text()}`);
   return r.json();
 }
-function show(html) { panel.hidden = false; panel.innerHTML = html; }
+function show(html) { if (S.phase === 'start') return; panel.hidden = false; panel.innerHTML = html; }
 function thinking(text) { show(`<div class="thinking"><i></i><i></i><i></i>${text}</div>`); }
 function failed(err, retry) {
   show(`<p class="ask">Er ging iets mis met de leraar.</p><p class="sub">${esc(String(err.message || err))}</p><div class="choices"><button class="btn primary" type="button" id="retry">Opnieuw</button></div>`);
@@ -966,6 +1031,7 @@ function spinTo(then) {
   const spin = now => {
     const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
     S.T = Math.round(from + (to - from) * e); S.P = S.T;
+    if (S.phase !== 'spin') return;
     if (p < 1) return requestAnimationFrame(spin);
     S.T = S.P = to; then();
   };
@@ -1075,7 +1141,7 @@ async function build(lead = 'Tik de tijd.') {
   try { res = await api('/build', clock()); } catch (err) { return failed(err, () => build(lead)); }
   S.placed = []; S.used = [];
   show(`<p class="ask">${lead}</p>${S.together ? example() : ''}<div class="built" id="built"><span class="slot"></span>
-    <button class="btn ghost back" id="back" type="button" hidden aria-label="Laatste blokje terug">↩</button></div>
+    <button class="btn ghost back" id="back" type="button" hidden aria-label="Laatste blokje terug"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button></div>
     <div class="tray">${res.tray.map(([w, d]) => `<button class="word" type="button" data-word="${esc(w)}" data-digit="${d || ''}">${label(w, d)}</button>`).join('')}</div>
     <p class="hint" id="hint"></p>${S.together ? '' : '<div class="choices"><button class="btn ghost" type="button" id="samen-build">Samen doen</button></div>'}`);
   panel.querySelectorAll('.tray .word').forEach(b => b.addEventListener('click', () => tap(b)));
@@ -1214,6 +1280,7 @@ function toggles() {
 $('#t-sound').addEventListener('click', () => { audio(); S.sound = !S.sound; store.set('sound', S.sound); toggles(); });
 $('#t-calm').addEventListener('click', () => { S.calm = !S.calm; store.set('calm', S.calm); toggles(); });
 $('#go').addEventListener('click', () => { audio(); startRun(); });
+$('#t-menu').addEventListener('click', stopRun);
 $('#again').addEventListener('click', () => { audio(); startRun(); });
 addEventListener('resize', resize);
 document.addEventListener('visibilitychange', () => { if (A.ctx && document.hidden) A.ctx.suspend().catch(mute); });
