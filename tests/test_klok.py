@@ -1,5 +1,6 @@
 import pytest
 
+from evals.spelling import CASES
 from klok import (
     Reading,
     alike,
@@ -11,6 +12,7 @@ from klok import (
     parse,
     place,
     readings,
+    repair,
     sentence,
     spelled_out,
     steps,
@@ -107,8 +109,8 @@ def test_steps_lead_to_their_answers() -> None:
 
 def test_step_for_twenty_past_nine() -> None:
     [step] = steps(20, 40, said("twintig over negen"))
-    assert step.answer == "er nog naartoe"
-    assert "het hele uur" in step.ask
+    assert step.answer == "nee, komt nog"
+    assert step.ask == "Is het hele uur al geweest?"
 
 
 @pytest.mark.parametrize(
@@ -121,7 +123,8 @@ def test_four_to_nine(text: str, found: list[str]) -> None:
 
 def test_the_hour_question_names_the_rule() -> None:
     [step] = steps(20, 56, said("vier voor acht"))
-    assert step.ask.startswith("Bij voor en half noem je het uur dat nog komt.")
+    assert step.ask == "Welk uur komt eraan?"
+    assert step.hint == "Bij voor en half: het uur dat nog komt."
     assert step.answer == "9"
 
 
@@ -193,3 +196,13 @@ def test_together_asks_the_clock_hour_first_on_the_digital_clock() -> None:
 )
 def test_numerals_become_words(text: str, spoken: str) -> None:
     assert parse(spelled_out(text)) == parse(spoken)
+
+
+def test_the_rules_read_misspelled_times() -> None:
+    misread = [text for text, meant in CASES if parse(repair(text)) != parse(meant)]
+    assert misread == ["zeefenderdig over acht"]
+
+
+@pytest.mark.parametrize("text", ["ik weet het niet", "geen idee", "weet ik niet"])
+def test_the_rules_make_no_time_of_other_words(text: str) -> None:
+    assert parse(repair(text)) is None

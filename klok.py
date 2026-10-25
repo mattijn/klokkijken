@@ -27,6 +27,7 @@ __all__ = [
     "parse",
     "place",
     "readings",
+    "repair",
     "sentence",
     "spelled_out",
     "steps",
@@ -163,6 +164,43 @@ def numeral(match: re.Match[str]) -> str:
     return f" {number_word(n)} " if 1 <= n <= 59 else match.group()
 
 
+WORDS = sorted(NUMBERS) + ["over", "voor", "half", "uur"]
+
+
+def repair(text: str) -> str:
+    """The text with each word replaced by the nearest time word, without a language model: twintug ovr negn becomes
+    twintig over negen. Words too far from any time word stay, so the text does not become a time."""
+    return " ".join(nearest_word(token) for token in re.findall(r"[a-z]+", plain(spelled_out(text))))
+
+
+def nearest_word(token: str) -> str:
+    word = min(WORDS, key=partial(likeness, token))
+    return word if likeness(token, word)[0] <= max(2, len(token) // 3) else token
+
+
+def likeness(token: str, word: str) -> tuple[int, int, str]:
+    """How far a word is from what the child wrote: by sound first, then by letters."""
+    return edits(sound(token), sound(word)), edits(token, word), word
+
+
+def sound(word: str) -> str:
+    """How a word sounds, roughly: children write the f for a v, the s for a z and the d for a t."""
+    return word.replace("f", "v").replace("z", "s").replace("d", "t")
+
+
+def edits(a: str, b: str) -> int:
+    """Edits between two words, a swap of two neighbouring letters counting as one."""
+    rows = [list(range(len(b) + 1))]
+    for i, x in enumerate(a, 1):
+        row = [i]
+        for j, y in enumerate(b, 1):
+            row.append(min(rows[-1][j] + 1, row[j - 1] + 1, rows[-1][j - 1] + (x != y)))
+            if i > 1 and j > 1 and x == b[j - 2] and a[i - 2] == y:
+                row[j] = min(row[j], rows[-2][j - 2] + 1)
+        rows.append(row)
+    return rows[-1][-1]
+
+
 def parse(text: str) -> Reading | None:
     """The time in correctly spelled Dutch words, or None when the words don't form a time."""
     tokens = [NUMBERS.get(t, t) for t in re.findall(r"[a-z]+", plain(text))]
@@ -245,20 +283,20 @@ def steps(hour: int, minute: int, reading: Reading) -> list[Step]:
                 out.append(
                     Step(
                         mistake=mistake,
-                        ask="Wat zeg je eerst: de minuten of het uur?",
+                        ask="Wat zeg je eerst?",
                         options=["de minuten", "het uur"],
                         answer="de minuten",
-                        hint="Het uur komt altijd achteraan, zoals in: tien over twee.",
+                        hint="Het uur komt als laatste.",
                     )
                 )
             case "anchor":
                 out.append(
                     Step(
                         mistake=mistake,
-                        ask="Staat de grote wijzer dichter bij de half of bij het hele uur?",
-                        options=["bij de half", "bij het hele uur"],
-                        answer="bij de half" if form.half else "bij het hele uur",
-                        hint="Kijk naar de kleur onder de grote wijzer: roze hoort bij de half, blauw bij het hele uur.",
+                        ask="Waar is de grote wijzer?",
+                        options=["bij half", "bij heel uur"],
+                        answer="bij half" if form.half else "bij heel uur",
+                        hint="Roze is half. Blauw is heel uur.",
                     )
                 )
             case "direction" if form.direction == "none":
@@ -266,9 +304,9 @@ def steps(hour: int, minute: int, reading: Reading) -> list[Step]:
                     Step(
                         mistake=mistake,
                         ask=f"Staat de grote wijzer precies op {anchor}?",
-                        options=["ja, precies", "nee"],
-                        answer="ja, precies",
-                        hint="Kijk waar de punt van de grote wijzer staat.",
+                        options=["ja", "nee"],
+                        answer="ja",
+                        hint="Kijk naar de punt van de grote wijzer.",
                     )
                 )
             case "direction":
@@ -276,10 +314,10 @@ def steps(hour: int, minute: int, reading: Reading) -> list[Step]:
                 out.append(
                     Step(
                         mistake=mistake,
-                        ask=f"Is de grote wijzer al voorbij {anchor}, of moet hij er nog naartoe?",
-                        options=["al voorbij", "er nog naartoe"],
-                        answer="al voorbij" if past else "er nog naartoe",
-                        hint=f"De wijzers draaien rechtsom. Is {anchor} al geweest, of komt hij nog?",
+                        ask=f"Is {anchor} al geweest?",
+                        options=["ja, al geweest", "nee, komt nog"],
+                        answer="ja, al geweest" if past else "nee, komt nog",
+                        hint="De grote wijzer draait rechtsom ↻.",
                     )
                 )
             case "number":
@@ -288,30 +326,30 @@ def steps(hour: int, minute: int, reading: Reading) -> list[Step]:
                 out.append(
                     Step(
                         mistake=mistake,
-                        ask=f"Hoeveel minuten zitten er tussen de grote wijzer en {anchor}?",
+                        ask=f"Hoeveel minuten {'tot' if form.direction == 'voor' else 'na'} {anchor}?",
                         options=[str(o) for o in sorted(options)],
                         answer=str(form.number),
-                        hint=f"Elk groot streepje is vijf minuten, elk klein streepje één. Tel vanaf {anchor}.",
+                        hint="Tel de streepjes. Een groot streepje is 5.",
                     )
                 )
             case "hour" if form.half or form.direction == "voor":
                 out.append(
                     Step(
                         mistake=mistake,
-                        ask="Bij voor en half noem je het uur dat nog komt. Welk uur komt eraan?",
+                        ask="Welk uur komt eraan?",
                         options=[str(now), str(next_)],
                         answer=str(next_),
-                        hint="Je gaat nog naar dat uur toe. Welk getal moet de kleine schaatser nog halen?",
+                        hint="Bij voor en half: het uur dat nog komt.",
                     )
                 )
             case "hour":
                 out.append(
                     Step(
                         mistake=mistake,
-                        ask="Bij over noem je het uur dat net geweest is. Welk uur is dat?",
+                        ask="Welk uur is net geweest?",
                         options=[str(now), str(next_)],
                         answer=str(now),
-                        hint="Kijk welk getal de kleine schaatser net voorbij is.",
+                        hint="Bij over: het uur dat net geweest is.",
                     )
                 )
     return out
@@ -381,25 +419,25 @@ def clue(hour: int, minute: int, reading: Reading, expected: tuple[str, str], wo
     anchor = "de half" if reading.half else "het hele uur"
     match expected:
         case (_, "number") if word in hours:
-            return "order", "Het uur komt achteraan. Begin met de minuten."
+            return "order", "Het uur komt als laatste."
         case (_, "number") if minute and word == number_word(minute) and reading.direction == "voor":
-            return "number", f"Niet {minute}: tel hoeveel minuten het nog duurt tot {anchor}."
+            return "number", f"Niet {minute}. Tel tot {anchor}."
         case (_, "number") if minute and word == number_word(minute):
-            return "number", f"Niet {minute}: tel hoeveel minuten het al na {anchor} is."
+            return "number", f"Niet {minute}. Tel vanaf {anchor}."
         case (_, "number"):
-            return "order", f"Begin met hoeveel minuten het is tot {anchor} of erna."
+            return "order", "Begin met de minuten."
         case (_, "to-hour" | "to-half") if word in ("over", "voor"):
-            return "direction", f"Is {anchor} al geweest? Dan zeg je over. Komt hij nog? Dan zeg je voor."
+            return "direction", "Al geweest? Over. Komt nog? Voor."
         case (_, "to-hour" | "to-half"):
-            return "order", "Na de minuten komt over of voor."
+            return "order", "Nu komt over of voor."
         case (_, "half"):
-            return "anchor", "Je telt vanaf de half, dus nu komt het woord half."
+            return "anchor", "Nu komt half."
         case ("uur", "hour"):
-            return "anchor", "Bij een heel uur zeg je er uur achter."
+            return "anchor", "Nu komt uur."
         case (_, "hour") if word in hours and (reading.half or reading.direction == "voor"):
-            return "hour", "Bij voor en half noem je het uur dat nog komt."
+            return "hour", "Het uur dat nog komt."
         case (_, "hour") if word in hours:
-            return "hour", "Bij over noem je het uur dat net geweest is."
+            return "hour", "Het uur dat net geweest is."
         case (_, "hour"):
             return "order", "Nu komt het uur."
     raise ValueError(f"No clue for {expected}")

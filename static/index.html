@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="engine" content="server">
 <title>IJsbaan-klok</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -118,6 +119,12 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .said{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:20px;font-weight:700}
 .said .no{color:var(--pink)}.said .yes{color:var(--cyan)}
 .card p.small{font-size:13px;color:var(--mute)}
+.players{display:grid;gap:10px;justify-items:center}
+.players .lbl{font:700 12px/1 var(--f-main);letter-spacing:.22em;text-transform:uppercase;color:var(--cyan)}
+#add-player{padding:6px 6px 6px 14px}
+#add-player input{all:unset;width:9em;font:700 16px var(--f-main);color:#fff;-webkit-user-select:text;user-select:text}
+#add-player button{all:unset;cursor:pointer;font:800 20px/1 var(--f-main);color:var(--gold);padding:4px 10px}
+.btn[hidden]{display:none}
 .card{text-align:center;max-width:720px;display:grid;gap:18px;justify-items:center}
 .title{font:400 clamp(46px,10vw,118px)/1 var(--f-neon);color:var(--pink);text-shadow:0 0 .1em rgba(255,79,179,.8),0 0 .4em rgba(255,79,179,.35);margin:0}
 .card p{margin:0;color:var(--lilac);font-size:clamp(17px,2.2vw,21px);max-width:46ch}
@@ -164,7 +171,8 @@ body.calm *{animation:none!important;transition:none!important}
 <div class="overlay" id="start">
   <div class="card">
     <h1 class="title">IJsbaan-klok</h1>
-    <p>Tik het uur en draai de grote wijzer naar de goede tijd. Bij een bevroren poort schrijf je de tijd op; spelling maakt niet uit.</p>
+    <p>Tik het uur. Draai de grote wijzer.</p>
+    <div class="players" id="players"></div>
     <div class="levels" id="levels"></div>
     <button class="btn primary" id="go" type="button">Schaatsen!</button>
     <button class="chip" id="open-parents" type="button">Voor ouders</button>
@@ -173,10 +181,11 @@ body.calm *{animation:none!important;transition:none!important}
 
 <div class="overlay" id="parents" hidden>
   <div class="card wide">
-    <h2 class="sub-title">Hoe gaat het klokkijken?</h2>
+    <h2 class="sub-title" id="parents-title">Hoe gaat het klokkijken?</h2>
     <div id="report"></div>
     <div class="choices"><button class="btn primary" id="close-parents" type="button">Terug</button>
-      <button class="btn ghost" id="reset" type="button">Opnieuw beginnen</button></div>
+      <button class="btn ghost" id="reset" type="button">Opnieuw beginnen</button>
+      <button class="btn ghost" id="forget" type="button" hidden>Naam weghalen</button></div>
     <p class="small">Dit overzicht staat alleen op dit apparaat.</p>
   </div>
 </div>
@@ -220,10 +229,16 @@ const LEVELS = [
 ];
 const GATES = 10, AGAIN = 2, BUILD = new Set([2, 7]), FROZEN = new Set([4, 9]), START = 18 * 60, REACH = 240, HOLD = 350, FAST = 9000;
 
+/* op een gedeelde computer heeft elke naam eigen niveaus, voordoen en overzicht; geluid en rustig gelden voor iedereen */
+const OWN = ['level', 'unlocked', 'coached', 'log'];
 const store = {
-  get(k, d) { try { const v = localStorage.getItem('ijsbaan.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem('ijsbaan.' + k, JSON.stringify(v)); } catch (e) { /* alleen gemak */ } },
+  player: '',
+  key: k => 'ijsbaan.' + (store.player && OWN.includes(k) ? `${store.player}.` : '') + k,
+  get(k, d) { try { const v = localStorage.getItem(store.key(k)); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(store.key(k), JSON.stringify(v)); } catch (e) { /* alleen gemak */ } },
+  drop(k) { try { localStorage.removeItem(store.key(k)); } catch (e) { /* alleen gemak */ } },
 };
+store.player = store.get('player', '');
 const S = {
   phase: 'start', level: Math.min(store.get('level', 0), LEVELS.length - 1), unlocked: Math.min(store.get('unlocked', 0), LEVELS.length - 1),
   T: START, P: START, disp: START, target: START, gate: 0, gates: GATES, again: [], score: 0, combo: 0, best: 0, firstTry: 0, coachEnd: 0,
@@ -617,7 +632,7 @@ const COACH = [
   {until: 3200, label: ''},
   {until: 5000, label: 'Draai de grote wijzer'},
   {until: 5600, label: ''},
-  {until: 7800, label: 'Kijk, hier staat wat jouw klok zegt', below: true},
+  {until: 7800, label: 'Kijk: dit zegt jouw klok', below: true},
   {until: 8300, label: ''},
 ];
 const ease = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
@@ -883,9 +898,9 @@ function endRun() {
     S.unlocked++; store.set('unlocked', S.unlocked); unlocked = `Nieuw niveau open: ${LEVELS[S.unlocked].name}!`;
   }
   $('#stars').innerHTML = [0, 1, 2].map(i => `<span class="${i < stars ? 'on' : ''}">★</span>`).join('');
-  $('#stats').innerHTML = `<div><b>${S.score}</b><span>punten</span></div><div><b>×${Math.min(S.best, 5)}</b><span>beste reeks</span></div><div><b>${S.firstTry}/${special}</b><span>bouw- en ijspoorten in één keer</span></div>`;
-  $('#unlock').textContent = unlocked || (stars === 3 ? 'Drie sterren!' : stars === 2 ? 'Haal alle bouw- en ijspoorten in één keer voor drie sterren.'
-    : 'Haal de helft van de bouw- en ijspoorten in één keer, dan gaat het volgende niveau open.');
+  $('#stats').innerHTML = `<div><b>${S.score}</b><span>punten</span></div><div><b>×${Math.min(S.best, 5)}</b><span>beste reeks</span></div><div><b>${S.firstTry}/${special}</b><span>in één keer goed</span></div>`;
+  $('#unlock').textContent = unlocked || (stars === 3 ? 'Drie sterren!' : stars === 2 ? 'Alles in één keer goed? Drie sterren!'
+    : 'De helft in één keer goed? Dan mag je verder.');
   renderLevels('#levels-end');
   $('#target').innerHTML = '';
   $('#end').hidden = false; SFX.fanfare(); cannons(40 + stars * 30);
@@ -900,12 +915,30 @@ function renderLevels(sel) {
 
 /* ---------- bevroren poort: het taalmodel leest mee ---------- */
 const panel = $('#panel');
+/* op de Mac beantwoordt de server, op school Python in de browser (Pyodide) met dezelfde regels */
+const ENGINE = document.querySelector('meta[name="engine"]').content, PYODIDE = 'https://cdn.jsdelivr.net/pyodide/v0.28.3/full/';
+let py = null;
+
+async function engine() {
+  await new Promise((done, fail) => {
+    const script = document.createElement('script');
+    script.src = PYODIDE + 'pyodide.js'; script.onload = done; script.onerror = () => fail(new Error('Pyodide laadt niet'));
+    document.head.append(script);
+  });
+  const pyodide = await loadPyodide({indexURL: PYODIDE});
+  await pyodide.loadPackage('pydantic');
+  for (const file of ['klok.py', 'play.py']) pyodide.FS.writeFile(file, await (await fetch(file)).text());
+  pyodide.runPython('import sys; sys.path.insert(0, ".")');
+  py = pyodide.pyimport('play');
+}
+
 async function api(path, body) {
+  if (ENGINE === 'browser') return JSON.parse(await py.browser(path.slice(1), JSON.stringify(body)));
   const r = await fetch(path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
   if (!r.ok) throw new Error(`${path} gaf ${r.status}: ${await r.text()}`);
   return r.json();
 }
-function show(html, who = '<span>Schaatsleraar</span><span>Apple-model op deze Mac</span>') { panel.hidden = false; panel.innerHTML = `<div class="who">${who}</div>${html}`; }
+function show(html, who = `<span>Schaatsleraar</span>${ENGINE === 'server' ? '<span>Apple-model op deze Mac</span>' : ''}`) { panel.hidden = false; panel.innerHTML = `<div class="who">${who}</div>${html}`; }
 function thinking(text) { show(`<div class="thinking"><i></i><i></i><i></i>${text}</div>`); }
 function failed(err, retry) {
   show(`<p class="ask">Er ging iets mis met de leraar.</p><p class="sub">${esc(String(err.message || err))}</p><div class="choices"><button class="btn primary" type="button" id="retry">Opnieuw</button></div>`);
@@ -940,12 +973,12 @@ function write(note = '', example = null) {
 }
 
 async function read(text) {
-  thinking('Het ijs leest mee…');
+  thinking('Even lezen…');
   let res;
   try { res = await api('/read', {...clock(), text}); } catch (err) { return failed(err, () => read(text)); }
   S.attempts++;
   for (const step of res.dialogue ? res.dialogue.steps : []) slip(step.mistake, 'geschreven', text);
-  if (res.verdict === 'unreadable') return S.attempts >= 2 ? together() : write(`Ik kan „${esc(res.spelled)}” niet goed lezen. Probeer het nog eens?`);
+  if (res.verdict === 'unreadable') return S.attempts >= 2 ? together() : write('Dat kan ik niet lezen. Nog een keer?');
   if (res.verdict === 'right' || res.verdict === 'other_words') {
     const first = S.attempts === 1;
     show(res.verdict === 'right'
@@ -956,12 +989,12 @@ async function read(text) {
   show(`<p class="ask">Ik lees:</p>${blocks(res.said, 'enter')}<p class="ask">Bedoel je dat?</p>
     <div class="choices"><button class="btn primary" type="button" id="yes">Ja</button><button class="btn ghost" type="button" id="no">Nee, opnieuw</button></div>`);
   $('#yes').addEventListener('click', () => S.attempts >= 2 ? together() : ask(res.dialogue));
-  $('#no').addEventListener('click', () => S.attempts >= 2 ? together() : write('Schrijf het nog een keer, dan lees ik beter.'));
+  $('#no').addEventListener('click', () => S.attempts >= 2 ? together() : write('Schrijf het nog een keer.'));
   SFX.soft();
 }
 
 async function ask(dialogue) {
-  thinking('De leraar denkt na…');
+  thinking('Even denken…');
   let q;
   try { q = await api('/ask', dialogue); } catch (err) { return failed(err, () => ask(dialogue)); }
   question(q);
@@ -969,7 +1002,7 @@ async function ask(dialogue) {
 
 function question(q) {
   const bar = Array.from({length: q.total}, (_, i) => `<b class="${i < q.number ? 'on' : ''}"></b>`).join('');
-  show(`<div class="steps">${bar}</div>${q.lead ? `<p class="sub" style="margin-top:14px">${esc(q.lead)}</p>` : ''}<p class="ask" style="margin-top:14px">${esc(q.question)}</p>
+  show(`<div class="steps">${bar}</div><p class="ask" style="margin-top:14px">${esc(q.question)}</p>
     <div class="choices">${q.options.map(o => `<button class="btn" type="button">${esc(o)}</button>`).join('')}</div><p class="hint" id="hint"></p>`);
   panel.querySelectorAll('.choices .btn').forEach(b => b.addEventListener('click', () => choose(q, b.textContent)));
 }
@@ -1023,7 +1056,7 @@ function startBuild() { spinTo(() => { S.phase = 'build'; S.misses = 0; build();
 
 const label = (word, digit) => digit ? `<span>${digit}</span><small>${esc(word)}</small>` : esc(word);
 
-async function build(lead = 'Bouw de zin. Tik de woorden in de goede volgorde.') {
+async function build(lead = 'Tik de woorden op volgorde.') {
   let res;
   try { res = await api('/build', clock()); } catch (err) { return failed(err, () => build(lead)); }
   S.placed = [];
@@ -1106,16 +1139,46 @@ function report() {
     ${seen ? `<div class="said"><span class="no">✗</span><span class="no">${esc(seen.example.what)}</span><span class="yes">✓</span><span class="yes">${esc(seen.right)}</span></div>` : ''}
     <p>${SLIPS[weak].why}</p>
     <h3>Oefen thuis</h3><p>${SLIPS[weak].home}</p><p class="small">Het spel oefent dit nu ook vaker.</p>`;
+  $('#parents-title').textContent = `Hoe gaat het klokkijken${store.player ? ' bij ' + store.player : ''}?`;
+  $('#forget').hidden = !store.player;
   $('#report').innerHTML = `<div class="focus"><ul class="progress">${progress}</ul>${wrong}</div>`;
   $('#parents').hidden = false;
 }
 $('#open-parents').addEventListener('click', report);
 $('#close-parents').addEventListener('click', () => { $('#parents').hidden = true; });
 $('#reset').addEventListener('click', () => {
-  if (!confirm('Alles wissen? Niveaus, sterren, het overzicht en het voordoen beginnen dan opnieuw.')) return;
-  for (const key of Object.keys(localStorage).filter(k => k.startsWith('ijsbaan.'))) localStorage.removeItem(key);
+  if (!confirm(`Opnieuw beginnen${store.player ? ' voor ' + store.player : ''}? Niveaus en dit overzicht worden gewist.`)) return;
+  for (const k of OWN) store.drop(k);
   location.reload();
 });
+$('#forget').addEventListener('click', () => {
+  if (!confirm(`${store.player} weghalen? Alles van ${store.player} wordt gewist.`)) return;
+  for (const k of OWN) store.drop(k);
+  store.set('players', store.get('players', []).filter(p => p !== store.player)); store.set('player', '');
+  location.reload();
+});
+
+/* wie speelt er: namen blijven op deze computer; de eerste naam krijgt wat er al zonder naam gespeeld was */
+function renderPlayers() {
+  const players = store.get('players', []);
+  $('#players').innerHTML = `<span class="lbl">Wie speelt er?</span><div class="levels">${players.map(p =>
+    `<button class="lv" type="button" aria-pressed="${p === store.player}">${esc(p)}</button>`).join('')}
+    <form id="add-player" class="lv"><input id="name" maxlength="20" autocomplete="off" placeholder="Nieuwe naam" aria-label="Nieuwe naam"><button type="submit" aria-label="Naam toevoegen">+</button></form></div>`;
+  $('#players').querySelectorAll('button.lv').forEach(b => b.addEventListener('click', () => pick(b.textContent)));
+  $('#add-player').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('#name').value.trim();
+    if (!name || players.includes(name)) return;
+    if (!players.length) for (const k of OWN) { const v = store.get(k, null); if (v !== null) { store.drop(k); store.player = name; store.set(k, v); store.player = ''; } }
+    store.set('players', [...players, name]); pick(name);
+  });
+}
+
+function pick(name) {
+  store.player = name; store.set('player', name);
+  S.level = Math.min(store.get('level', 0), LEVELS.length - 1); S.unlocked = Math.min(store.get('unlocked', 0), LEVELS.length - 1);
+  renderPlayers(); renderLevels('#levels'); renderHud();
+}
 $('#reload').addEventListener('click', () => location.reload());
 $('#live').addEventListener('click', e => { if (e.target.closest('#samen')) { audio(); startTogether(performance.now()); } });
 
@@ -1137,8 +1200,11 @@ document.addEventListener('visibilitychange', () => { if (A.ctx) document.hidden
   snow = Array.from({length: 60}, () => ({x: Math.random() * innerWidth, y: Math.random() * innerHeight, v: .3 + Math.random() * .7, s: .8 + Math.random() * 1.8, o: .2 + Math.random() * .5, p: Math.random() * 6}));
   await document.fonts.load('40px Monoton').catch(() => null);
   await document.fonts.load('700 20px Syne').catch(() => null);
-  PHRASES = await (await fetch('/phrases')).json();
-  toggles(); renderLevels('#levels'); renderHud(); resize();
+  $('#go').disabled = true; $('#go').textContent = 'Laden…';
+  if (ENGINE === 'browser') await engine();
+  PHRASES = await api('/phrases', {});
+  $('#go').disabled = false; $('#go').textContent = 'Schaatsen!';
+  toggles(); renderPlayers(); renderLevels('#levels'); renderHud(); resize();
   requestAnimationFrame(frame);
 })();
 </script>

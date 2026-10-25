@@ -14,7 +14,7 @@ def post(path: str, body: dict[str, Any]) -> Any:
 
 
 def test_every_minute_has_its_phrase() -> None:
-    phrases = client.get("/phrases").json()
+    phrases = post("/phrases", {})
     assert len(phrases) == 720
     assert [w for w, role in phrases[8 * 60 + 37]] == ["zeven", "over", "half", "negen"]
 
@@ -29,15 +29,11 @@ def test_dialogue_for_twenty_past_nine() -> None:
     assert [w for w, role in read["said"]] == ["twintig", "over", "negen"]
 
     first = post("/ask", read["dialogue"])
-    assert first["lead"]
-    assert first["question"] == "Is de grote wijzer al voorbij het hele uur, of moet hij er nog naartoe?"
+    assert first["question"] == "Is het hele uur al geweest?"
 
-    wrong = post("/step", {"dialogue": first["dialogue"], "choice": "al voorbij"})
-    assert wrong == {
-        "correct": False,
-        "hint": "De wijzers draaien rechtsom. Is het hele uur al geweest, of komt hij nog?",
-    }
-    done = post("/step", {"dialogue": first["dialogue"], "choice": "er nog naartoe"})
+    wrong = post("/step", {"dialogue": first["dialogue"], "choice": "ja, al geweest"})
+    assert wrong == {"correct": False, "hint": "De grote wijzer draait rechtsom ↻."}
+    done = post("/step", {"dialogue": first["dialogue"], "choice": "nee, komt nog"})
     assert done["done"]
     assert [w for w, role in done["right"]] == ["tien", "over", "half", "negen"]
 
@@ -55,13 +51,10 @@ def test_building_four_to_nine() -> None:
         ["zesenvijftig", 56],
         ["voor", None],
     ]
-    assert (
-        post("/place", clock | {"placed": [], "word": "negen"})["hint"]
-        == "Het uur komt achteraan. Begin met de minuten."
-    )
+    assert post("/place", clock | {"placed": [], "word": "negen"})["hint"] == "Het uur komt als laatste."
     assert post("/place", clock | {"placed": ["vier", "voor"], "word": "acht"}) == {
         "role": None,
-        "hint": "Bij voor en half noem je het uur dat nog komt.",
+        "hint": "Het uur dat nog komt.",
         "mistake": "hour",
         "done": False,
     }

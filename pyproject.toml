@@ -30,7 +30,7 @@ fm-pydantic-ai = { git = "https://github.com/mattijn/fm-pydantic-ai", rev = "39b
 line-length = 120
 
 [tool.mypy]
-files = ["klok.py", "tutor.py", "server.py", "tests", "evals"]
+files = ["klok.py", "play.py", "tutor.py", "server.py", "pages.py", "tests", "evals"]
 strict = true
 
 [[tool.mypy.overrides]]

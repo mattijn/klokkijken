@@ -1,14 +1,15 @@
-"""How well the speller reads a child's misspelled times: uv run python -m evals.spelling
+"""How well a speller reads a child's misspelled times: uv run python -m evals.spelling [model|rules]
 
 A case passes when the repaired words parse to the same time words as the intended ones; a wrong time the child
 wrote must stay wrong.
 """
 
 import asyncio
+import sys
 import time
 
 from klok import parse
-from tutor import spell
+from play import Speller, by_rules
 
 __all__ = ["CASES", "main"]
 
@@ -51,7 +52,7 @@ CASES = [
 ]
 
 
-async def main() -> None:
+async def main(spell: Speller) -> None:
     passed = 0
     for text, intended in CASES:
         start = time.perf_counter()
@@ -63,4 +64,9 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    if sys.argv[1:] == ["rules"]:
+        asyncio.run(main(by_rules))
+    else:
+        from tutor import spell
+
+        asyncio.run(main(spell))

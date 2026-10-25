@@ -3,6 +3,8 @@
 The writing uses digits and correctly spelled words, which the rules read without the speller.
 """
 
+import functools
+import http.server
 import math
 import socket
 import threading
@@ -14,6 +16,7 @@ import pytest
 import uvicorn
 from playwright.sync_api import Browser, Page, Playwright, sync_playwright
 
+import pages
 from server import app
 
 LEVELS = range(5)
@@ -58,6 +61,7 @@ def open_game(browser: Browser, url: str, **context: Any) -> tuple[Page, list[An
 
     page.on("pageerror", keep)
     page.goto(url)
+    page.wait_for_function("PHRASES.length === 720")
     page.evaluate("localStorage.setItem('ijsbaan.coached', 'true'); localStorage.setItem('ijsbaan.calm', 'true')")
     page.reload()
     page.wait_for_function("PHRASES.length === 720")
@@ -156,7 +160,7 @@ def test_starting_over_clears_everything(chromium: Browser, url: str) -> None:
     with page.expect_navigation():
         page.click("#reset")
     page.wait_for_function("PHRASES.length === 720")
-    assert page.evaluate("Object.keys(localStorage).filter(k => k.startsWith('ijsbaan.'))") == []
+    assert page.evaluate("Object.keys(localStorage).sort()") == ["ijsbaan.calm"]
     assert page.evaluate("[S.level, S.unlocked]") == [0, 0]
     assert errors == []
 
@@ -253,6 +257,60 @@ def test_the_report_names_one_thing_to_work_on(chromium: Browser, url: str) -> N
     assert "✗\nvier voor acht\n✓\nvier voor negen" in text
     assert "Welk uur komt eraan?" in text
     assert page.evaluate("focus()") == "hour"
+    assert errors == []
+
+
+def add_player(page: Page, name: str) -> None:
+    page.fill("#name", name)
+    page.press("#name", "Enter")
+
+
+def test_each_name_keeps_its_own_level(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    page.evaluate("store.set('unlocked', 2); store.set('level', 2)")
+    add_player(page, "Sam")
+    assert page.evaluate("[store.player, S.unlocked]") == ["Sam", 2]
+    add_player(page, "Noor")
+    assert page.evaluate("[store.player, S.unlocked, S.level]") == ["Noor", 0, 0]
+    page.click("#players button.lv:text-is('Sam')")
+    assert page.evaluate("[S.unlocked, S.level]") == [2, 2]
+    page.reload()
+    page.wait_for_function("PHRASES.length === 720")
+    assert page.evaluate("[store.player, S.unlocked, store.get('players', [])]") == ["Sam", 2, ["Sam", "Noor"]]
+    assert page.evaluate("localStorage.getItem('ijsbaan.unlocked')") is None
+    assert errors == []
+
+
+def test_removing_a_name(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    add_player(page, "Sam")
+    page.evaluate("report()")
+    assert page.inner_text("#parents-title") == "Hoe gaat het klokkijken bij Sam?"
+    page.once("dialog", accept)
+    with page.expect_navigation():
+        page.click("#forget")
+    page.wait_for_function("PHRASES.length === 720")
+    assert page.evaluate("[store.player, store.get('players', [])]") == ["", []]
+    assert errors == []
+
+
+@pytest.fixture(scope="module")
+def site() -> Iterator[str]:
+    """The school version, built and served as plain files, with the rules running in the browser."""
+    pages.main()
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(pages.SITE))
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{httpd.server_address[1]}"
+    httpd.shutdown()
+
+
+def test_the_school_version_plays_without_a_server(chromium: Browser, site: str) -> None:
+    page, errors = open_game(chromium, site)
+    assert page.evaluate("ENGINE") == "browser"
+    assert play_round(page, 3) == 3
+    assert page.evaluate("api('/read', {hour: 20, minute: 56, text: 'fier foor neegen'})")["verdict"] == "right"
     assert errors == []
 
 
