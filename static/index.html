@@ -737,6 +737,7 @@ $('#t-calm').addEventListener('click', () => { S.calm = !S.calm; store.set('calm
 $('#go').addEventListener('click', () => { audio(); startRun(); });
 $('#again').addEventListener('click', () => { audio(); startRun(); });
 addEventListener('resize', resize);
+document.addEventListener('visibilitychange', () => { if (A.ctx) document.hidden ? A.ctx.suspend() : A.ctx.resume(); });
 
 (async function boot() {
   snow = Array.from({length: 60}, () => ({x: Math.random() * innerWidth, y: Math.random() * innerHeight, v: .3 + Math.random() * .7, s: .8 + Math.random() * 1.8, o: .2 + Math.random() * .5, p: Math.random() * 6}));
