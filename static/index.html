@@ -476,7 +476,7 @@ function draw(now) {
   ctx.drawImage(rinkC, CX - o, CY - o, 2 * o, 2 * o);
   ctx.drawImage(scratchC, CX - o, CY - o, 2 * o, 2 * o);
 
-  if (S.phase === 'skate') { hints(now); highlight(); }
+  if (S.phase === 'skate') { hints(now); highlight(now); }
 
   const ha = mod(S.disp / 60, 12) / 12 * Math.PI * 2, ma = mod(S.disp, 60) / 60 * Math.PI * 2;
   const htip = at(ha, R * .5), mtip = at(ma, R * .8);
@@ -519,8 +519,13 @@ function draw(now) {
   }
 }
 
-function highlight() {
-  if (!hover || dragging || hover.kind === 'hand') return;
+function highlight(now) {
+  ctx.save();
+  ctx.strokeStyle = '#FFD34E'; ctx.lineWidth = 2;
+  ctx.globalAlpha = S.tip ? .45 + .45 * Math.sin(now / 220) : .22;
+  for (let n = 1; n <= 12; n++) { const [x, y] = at(n / 12 * Math.PI * 2, R * .74); ctx.beginPath(); ctx.arc(x, y, R * .1, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.restore();
+  if (!hover || dragging || hover.kind === 'hand' || hover.kind === 'small') return;
   ctx.save();
   if (hover.kind === 'hour') {
     const [x, y] = at(hover.n / 12 * Math.PI * 2, R * .74);
@@ -550,6 +555,7 @@ const towards = (a, b, p) => [a[0] + (b[0] - a[0]) * ease(p), a[1] + (b[1] - a[1
 function startCoach(now) {
   coach = {t0: now, n: mod(Math.floor(S.target / 60) + 6, 12) || 12, base: null, step: -1};
   store.set('coached', true);
+  coachStep(now);
 }
 
 function stopCoach(now) { coach = null; S.coachEnd = now; $('#live').classList.remove('spot'); renderLive(); }
@@ -567,7 +573,7 @@ function coachStep(now) {
     towards(at(sweep, R * .92), live, p), live, live][step];
   coach.label = COACH[step].label; coach.fade = step === 7 ? 1 - p : 1; coach.pulse = step === 1 ? p : 0; coach.small = step === 2;
   if (step !== coach.step) {
-    coach.step = step; if (coach.label) say(coach.label, true);
+    coach.step = step;
     if (COACH[step].below) $('#live .lbl').textContent = coach.label;
   }
 }
@@ -595,7 +601,7 @@ async function nudge() {
   S.nudged = true;
   const {nudge: text} = await api('/nudge', {...clock(), at: face(S.T)});
   if (!text || S.phase !== 'skate' || !S.nudgeSince) return;
-  $('#live').insertAdjacentHTML('beforeend', `<span class="nudge">${esc(text)}</span>`); say(text);
+  $('#live').insertAdjacentHTML('beforeend', `<span class="nudge">${esc(text)}</span>`);
 }
 
 function hints(now) {
@@ -618,12 +624,15 @@ const wrap = d => mod(d + 30, 60) - 30;
 const snap = () => LEVELS[S.level].digital ? 1 : 5;
 
 /* de getallen zijn de uren: tikken zet de kleine wijzer; de buitenrand en de grote wijzer zelf draaien de minuten */
+const hourAt = e => mod(Math.round(minuteAt(e) / 5), 12) || 12;
+
 function zone(e) {
-  const r = Math.hypot(e.clientX - CX, e.clientY - CY), [mx, my] = at(mod(S.disp, 60) / 60 * Math.PI * 2, R * .8);
+  const r = Math.hypot(e.clientX - CX, e.clientY - CY), near = ([x, y]) => Math.hypot(e.clientX - x, e.clientY - y) < R * .16;
   if (S.phase !== 'skate' || r > R * 1.4) return null;
   if (r > R * .86) return {kind: 'ring'};
-  if (Math.hypot(e.clientX - mx, e.clientY - my) < R * .16) return {kind: 'hand'};
-  if (r > R * .58) return {kind: 'hour', n: mod(Math.round(minuteAt(e) / 5), 12) || 12};
+  if (near(at(mod(S.disp, 60) / 60 * Math.PI * 2, R * .8))) return {kind: 'hand'};
+  if (near(at(mod(S.disp / 60, 12) / 12 * Math.PI * 2, R * .5))) return {kind: 'small'};
+  if (r > R * .58) return {kind: 'hour', n: hourAt(e)};
   return {kind: 'hand'};
 }
 
@@ -632,16 +641,19 @@ cv.addEventListener('pointerdown', e => {
   const z = zone(e);
   if (!z) return;
   S.touched = true; if (coach) stopCoach(performance.now());
-  if (z.kind === 'hour') return setHour(z.n);
-  dragging = true; cv.setPointerCapture(e.pointerId);
+  if (z.kind === 'hour') return playerHour(z.n);
+  dragging = z.kind === 'small' ? 'hour' : 'minute'; cv.setPointerCapture(e.pointerId);
   const m = minuteAt(e); lastAngle = m;
   if (z.kind === 'ring') { S.P = S.T + wrap(m - mod(S.T, 60)); setT(false); }
 });
 cv.addEventListener('pointermove', e => {
   if (!dragging) { hover = zone(e); cv.style.cursor = hover ? (hover.kind === 'hour' ? 'pointer' : 'grab') : ''; return; }
+  if (dragging === 'hour') { const n = hourAt(e); if (n !== (mod(Math.floor(S.T / 60), 12) || 12) || mod(S.T, 60)) playerHour(n); return; }
   const m = minuteAt(e); S.P += wrap(m - lastAngle); lastAngle = m; setT(true);
 });
 for (const ev of ['pointerup', 'pointercancel']) cv.addEventListener(ev, () => { dragging = false; });
+
+function playerHour(n) { S.usedHour = true; S.tip = ''; setHour(n); }
 
 function setHour(n) {
   const base = n % 12 * 60;
@@ -653,6 +665,8 @@ function setHour(n) {
 function setT(dragged) {
   const step = snap(), t = Math.round(S.P / step) * step, hop = Math.floor(t / 60) - Math.floor(S.T / 60);
   if (t === S.T) return;
+  if (dragged && !coach) S.spun += Math.abs(t - S.T);
+  if (S.spun > 120 && !S.usedHour && !S.tip) S.tip = 'Tip: tik op een getal. Dan springt de kleine wijzer erheen.';
   S.T = t; S.nudgeSince = 0; S.nudged = false; SFX.tick(mod(t, 60) / step % 4); renderLive();
   if (!dragged || !hop) return;
   const h = mod(Math.floor(t / 60), 12) || 12, [x, y] = at(mod(t / 60, 12) / 12 * Math.PI * 2, R * .5);
@@ -678,7 +692,7 @@ function renderLive() {
   const el = $('#live');
   if (S.phase !== 'skate') { el.innerHTML = ''; return; }
   const live = PHRASES[face(S.T)];
-  el.innerHTML = `<span class="lbl">Jouw klok zegt</span>${blocks(live)}`;
+  el.innerHTML = `<span class="lbl">Jouw klok zegt</span>${blocks(live)}${S.tip ? `<span class="nudge">${S.tip}</span>` : ''}`;
   if (LEVELS[S.level].digital) return;
   const has = new Set(live.map(([w, r]) => r + ':' + w)), now = new Set();
   $('#target').querySelectorAll('.word').forEach((node, i) => {
@@ -706,7 +720,7 @@ function pickTarget() {
 
 function startRun() {
   const start = Math.floor(Math.random() * 24) * 60;
-  Object.assign(S, {phase: 'skate', T: start, P: start, disp: start, gate: 0, score: 0, combo: 0, best: 0, firstTry: 0});
+  Object.assign(S, {phase: 'skate', T: start, P: start, disp: start, gate: 0, score: 0, combo: 0, best: 0, firstTry: 0, usedHour: false});
   scratchC.getContext('2d').clearRect(0, 0, 2 * RB + 40, 2 * RB + 40);
   $('#start').hidden = true; $('#end').hidden = true;
   nextGate();
@@ -717,7 +731,7 @@ function nextGate() {
   if (S.gate === GATES) return endRun();
   if (BUILD.has(S.gate)) return startBuild();
   if (FROZEN.has(S.gate)) return startFrozen();
-  S.phase = 'skate'; pickTarget(); S.gateStart = performance.now(); S.holdSince = 0; S.nudgeSince = 0; S.nudged = false; S.touched = false;
+  S.phase = 'skate'; pickTarget(); S.gateStart = performance.now(); S.holdSince = 0; S.nudgeSince = 0; S.nudged = false; S.touched = false; S.spun = 0; S.tip = '';
   renderTarget();
   if (!store.get('coached', false)) startCoach(S.gateStart);
 }
@@ -863,15 +877,6 @@ function startBuild() { spinTo(() => { S.phase = 'build'; S.placed = []; S.misse
 
 const label = (word, digit) => digit ? `<span>${digit}</span><small>${esc(word)}</small>` : esc(word);
 
-/* voorlezen: een kind met dyslexie hoort het woord dat het kiest, en de regel als het mis is */
-function say(text, first = false) {
-  if (!S.sound || !window.speechSynthesis) return;
-  if (first) speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text), voice = speechSynthesis.getVoices().find(v => v.lang === 'nl-NL');
-  u.lang = 'nl-NL'; u.rate = .9; if (voice) u.voice = voice;
-  speechSynthesis.speak(u);
-}
-
 async function build() {
   let res;
   try { res = await api('/build', clock()); } catch (err) { return failed(err, build); }
@@ -882,11 +887,10 @@ async function build() {
 
 async function tap(block) {
   const {word, digit} = block.dataset;
-  say(word, true);
   let res;
   try { res = await api('/place', {...clock(), placed: S.placed, word}); } catch (err) { return failed(err, () => tap(block)); }
   if (res.hint) {
-    S.misses++; $('#hint').textContent = res.hint; SFX.soft(); say(res.hint);
+    S.misses++; $('#hint').textContent = res.hint; SFX.soft();
     block.classList.remove('nope'); void block.offsetWidth; block.classList.add('nope');
     return;
   }
@@ -894,7 +898,6 @@ async function tap(block) {
   $('#built .slot').insertAdjacentHTML('beforebegin', `<span class="word tile ${res.role} pop">${label(word, digit)}</span>`);
   SFX.lock(S.placed.length * 2);
   if (!res.done) return;
-  say(S.placed.join(' '));
   $('#built .slot').remove();
   panel.querySelectorAll('.tray .word').forEach(b => { b.disabled = true; });
   thaw(S.misses ? 50 : 100, !S.misses);
