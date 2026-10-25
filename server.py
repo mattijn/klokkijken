@@ -15,7 +15,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
 import tutor
-from klok import VALUES, Reading, Step, judge, parse, place, readings, sentence, steps, tray, words
+from klok import VALUES, Reading, Step, judge, nudge, parse, place, readings, sentence, steps, tray, words
 
 __all__ = ["app"]
 
@@ -32,6 +32,10 @@ class Clock(BaseModel):
 class Placing(Clock):
     placed: list[str]
     word: str
+
+
+class Position(Clock):
+    at: int
 
 
 class Answer(Clock):
@@ -123,6 +127,12 @@ async def place_word(request: Request) -> JSONResponse:
     return JSONResponse(place(placing.hour, placing.minute, placing.placed, placing.word).model_dump())
 
 
+async def hint(request: Request) -> JSONResponse:
+    """The rule to remember when the clock has the right minutes on the wrong hour."""
+    position = Position.model_validate(await request.json())
+    return JSONResponse({"nudge": nudge(position.hour, position.minute, position.at)})
+
+
 app = Starlette(
     routes=[
         Route("/", page),
@@ -132,6 +142,7 @@ app = Starlette(
         Route("/step", answer_step, methods=["POST"]),
         Route("/build", build, methods=["POST"]),
         Route("/place", place_word, methods=["POST"]),
+        Route("/nudge", hint, methods=["POST"]),
     ]
 )
 

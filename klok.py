@@ -21,6 +21,7 @@ __all__ = [
     "judge",
     "minutes",
     "mistakes",
+    "nudge",
     "number_word",
     "parse",
     "place",
@@ -371,3 +372,15 @@ def clue(hour: int, minute: int, reading: Reading, expected: tuple[str, str], wo
         case (_, "hour"):
             return "Nu komt het uur."
     raise ValueError(f"No clue for {expected}")
+
+
+def nudge(hour: int, minute: int, at: int) -> str | None:
+    """The rule to remember when the clock, at `at` minutes past twelve, has the right minutes on the wrong hour."""
+    if at % 60 != minute or at % 720 == hour % 12 * 60 + minute:
+        return None
+    reading = readings(hour, minute)[0]
+    if reading.half or reading.direction == "voor":
+        return f"Bij {'half' if reading.half else 'voor'} hoort het uur dat nog komt. Tik dat uur en draai terug."
+    if reading.direction == "over":
+        return "Bij over hoort het uur dat net geweest is. Tik dat uur en draai vooruit."
+    return "De grote wijzer staat goed. Tik nu het uur dat in de zin staat."

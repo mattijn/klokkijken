@@ -6,6 +6,7 @@ from klok import (
     judge,
     minutes,
     mistakes,
+    nudge,
     number_word,
     parse,
     place,
@@ -152,3 +153,15 @@ def test_lookalikes() -> None:
     assert alike("acht", "achttien")
     assert alike("één", "twaalf")
     assert not alike("acht", "negen")
+
+
+def test_half_five_turned_back_from_four() -> None:
+    assert nudge(16, 30, 3 * 60 + 30) == "Bij half hoort het uur dat nog komt. Tik dat uur en draai terug."
+    assert nudge(16, 30, 4 * 60 + 30) is None
+    assert nudge(16, 30, 4 * 60) is None
+
+
+def test_nudges_follow_the_sentence() -> None:
+    assert nudge(20, 56, 7 * 60 + 56) == "Bij voor hoort het uur dat nog komt. Tik dat uur en draai terug."
+    assert nudge(20, 10, 9 * 60 + 10) == "Bij over hoort het uur dat net geweest is. Tik dat uur en draai vooruit."
+    assert nudge(20, 0, 9 * 60) == "De grote wijzer staat goed. Tik nu het uur dat in de zin staat."

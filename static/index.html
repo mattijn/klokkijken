@@ -52,6 +52,7 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .live{position:fixed;left:0;right:0;bottom:max(18px,env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;z-index:4;padding:0 16px}
 .live .word{font-size:clamp(16px,2.4vw,24px);padding:8px 12px 9px;border-width:2px;opacity:.92}
 .live .lbl{color:var(--mute)}
+.live .nudge{font:700 clamp(15px,2vw,19px)/1.3 var(--f-main);color:var(--gold);text-align:center;max-width:46ch}
 
 .panel{position:fixed;left:50%;bottom:max(16px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(660px,calc(100% - 28px));z-index:6;
   background:rgba(22,10,54,.94);border:1.5px solid rgba(160,230,255,.55);border-radius:26px;padding:22px;box-shadow:0 0 50px rgba(120,210,255,.18);
@@ -133,7 +134,7 @@ body.calm *{animation:none!important;transition:none!important}
 <div class="overlay" id="start">
   <div class="card">
     <h1 class="title">IJsbaan-klok</h1>
-    <p>Pak de grote wijzer en schaats naar de goede tijd. Bij een bevroren poort schrijf je de tijd op; spelling maakt niet uit.</p>
+    <p>Tik het uur en draai de grote wijzer naar de goede tijd. Bij een bevroren poort schrijf je de tijd op; spelling maakt niet uit.</p>
     <div class="levels" id="levels"></div>
     <button class="btn primary" id="go" type="button">Schaatsen!</button>
   </div>
@@ -162,7 +163,7 @@ const LEVELS = [
   {name: 'Rond de half', minutes: Array.from({length: 12}, (_, i) => i * 5)},
   {name: 'Digitaal', minutes: Array.from({length: 60}, (_, i) => i), digital: true},
 ];
-const GATES = 10, BUILD = new Set([2, 7]), FROZEN = new Set([4, 9]), START = 18 * 60, HOLD = 350, FAST = 9000;
+const GATES = 10, BUILD = new Set([2, 7]), FROZEN = new Set([4, 9]), START = 18 * 60, REACH = 240, HOLD = 350, FAST = 9000;
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem('ijsbaan.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -170,7 +171,7 @@ const store = {
 };
 const S = {
   phase: 'start', level: Math.min(store.get('level', 0), LEVELS.length - 1), unlocked: Math.min(store.get('unlocked', 0), LEVELS.length - 1),
-  T: START, P: START, disp: START, target: START, gate: 0, score: 0, combo: 0, best: 0, firstTry: 0,
+  T: START, P: START, disp: START, target: START, gate: 0, score: 0, combo: 0, best: 0, firstTry: 0, coachEnd: 0,
   gateStart: 0, holdSince: 0, attempts: 0, sound: store.get('sound', true),
   calm: store.get('calm', matchMedia('(prefers-reduced-motion: reduce)').matches),
 };
@@ -446,6 +447,11 @@ function update(dt, now) {
       S.holdSince = S.holdSince || now;
       if (now - S.holdSince > HOLD) passGate(now);
     } else S.holdSince = 0;
+    if (mod(S.T, 60) === mod(S.target, 60) && face(S.T) !== face(S.target) && !dragging) {
+      S.nudgeSince = S.nudgeSince || now;
+      if (now - S.nudgeSince > 1200 && !S.nudged) nudge();
+    }
+    if (!S.touched && !coach && now - Math.max(S.gateStart, S.coachEnd) > 8000) startCoach(now);
   }
 }
 
@@ -466,7 +472,8 @@ function draw(now) {
   ctx.drawImage(rinkC, CX - o, CY - o, 2 * o, 2 * o);
   ctx.drawImage(scratchC, CX - o, CY - o, 2 * o, 2 * o);
 
-  if (S.phase === 'skate') hints(now);
+  if (S.phase === 'skate') { hints(now); highlight(); }
+  if (coach) drawCoach(now);
 
   const ha = mod(S.disp / 60, 12) / 12 * Math.PI * 2, ma = mod(S.disp, 60) / 60 * Math.PI * 2;
   const htip = at(ha, R * .5), mtip = at(ma, R * .8);
@@ -508,6 +515,55 @@ function draw(now) {
   }
 }
 
+function highlight() {
+  if (!hover || dragging || hover.kind === 'hand') return;
+  ctx.save();
+  if (hover.kind === 'hour') {
+    const [x, y] = at(hover.n / 12 * Math.PI * 2, R * .74);
+    ctx.fillStyle = 'rgba(255,211,78,.22)'; ctx.strokeStyle = 'rgba(255,211,78,.8)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, R * .11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  } else {
+    ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = R * .11;
+    ctx.beginPath(); ctx.arc(CX, CY, R * .915, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* voordoen: een spookhand tikt een uur aan en draait de grote wijzer, zonder de klok te verzetten */
+function startCoach(now) {
+  const n = mod(Math.floor(S.target / 60) + 6, 12) || 12;
+  coach = {t0: now, n, a: mod(S.disp, 60) / 60 * Math.PI * 2};
+  store.set('coached', true);
+}
+function drawCoach(now) {
+  const t = now - coach.t0, loop = 4600, k = t % loop;
+  if (t > 2 * loop || S.phase !== 'skate') { coach = null; S.coachEnd = now; return; }
+  const ease = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+  const num = at(coach.n / 12 * Math.PI * 2, R * .74), ring = at(coach.a, R * .92), start = [CX, CY + R * 1.2];
+  let x, y, label = '', pulse = 0;
+  if (k < 1000) { const p = ease(k / 1000); x = start[0] + (num[0] - start[0]) * p; y = start[1] + (num[1] - start[1]) * p; }
+  else if (k < 1800) { [x, y] = num; label = 'Tik het uur'; pulse = (k - 1000) / 800; }
+  else if (k < 2300) { const p = ease((k - 1800) / 500); x = num[0] + (ring[0] - num[0]) * p; y = num[1] + (ring[1] - num[1]) * p; }
+  else if (k < 4000) { [x, y] = at(coach.a + ease((k - 2300) / 1700) * Math.PI * .7, R * .92); label = 'Draai de grote wijzer'; }
+  else { [x, y] = at(coach.a + Math.PI * .7, R * .92); }
+  ctx.save(); ctx.globalAlpha = k > 4000 ? 1 - (k - 4000) / 600 : 1;
+  if (pulse) { ctx.strokeStyle = `rgba(255,211,78,${1 - pulse})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 14 + pulse * 30, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  if (label) {
+    ctx.font = '800 20px Syne, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff'; ctx.shadowColor = '#160A36'; ctx.shadowBlur = 10; ctx.fillText(label, x, y - 38);
+  }
+  ctx.restore();
+}
+
+async function nudge() {
+  S.nudged = true;
+  const {nudge: text} = await api('/nudge', {...clock(), at: face(S.T)});
+  if (!text || S.phase !== 'skate' || !S.nudgeSince) return;
+  $('#live').insertAdjacentHTML('beforeend', `<span class="nudge">${esc(text)}</span>`); say(text);
+}
+
 function hints(now) {
   const waited = now - S.gateStart, ta = mod(S.target, 60) / 60 * Math.PI * 2;
   if (waited > 15000) {
@@ -522,27 +578,51 @@ function hints(now) {
 }
 
 /* ---------- slepen ---------- */
-let dragging = false, lastAngle = 0;
+let dragging = false, lastAngle = 0, hover = null, coach = null;
 const minuteAt = e => { const a = Math.atan2(e.clientX - CX, -(e.clientY - CY)); return mod(a / (Math.PI * 2) * 60, 60); };
 const wrap = d => mod(d + 30, 60) - 30;
 const snap = () => LEVELS[S.level].digital ? 1 : 5;
 
+/* de getallen zijn de uren: tikken zet de kleine wijzer; de buitenrand en de grote wijzer zelf draaien de minuten */
+function zone(e) {
+  const r = Math.hypot(e.clientX - CX, e.clientY - CY), [mx, my] = at(mod(S.disp, 60) / 60 * Math.PI * 2, R * .8);
+  if (S.phase !== 'skate' || r > R * 1.4) return null;
+  if (r > R * .86) return {kind: 'ring'};
+  if (Math.hypot(e.clientX - mx, e.clientY - my) < R * .16) return {kind: 'hand'};
+  if (r > R * .58) return {kind: 'hour', n: mod(Math.round(minuteAt(e) / 5), 12) || 12};
+  return {kind: 'hand'};
+}
+
 cv.addEventListener('pointerdown', e => {
   audio();
-  if (S.phase !== 'skate' || Math.hypot(e.clientX - CX, e.clientY - CY) > R * 1.4) return;
+  const z = zone(e);
+  if (!z) return;
+  S.touched = true; coach = null;
+  if (z.kind === 'hour') return setHour(z.n);
   dragging = true; cv.setPointerCapture(e.pointerId);
-  const m = minuteAt(e); S.P = S.T + wrap(m - mod(S.T, 60)); lastAngle = m; setT();
+  const m = minuteAt(e); lastAngle = m;
+  if (z.kind === 'ring') { S.P = S.T + wrap(m - mod(S.T, 60)); setT(false); }
 });
 cv.addEventListener('pointermove', e => {
-  if (!dragging) return;
-  const m = minuteAt(e); S.P += wrap(m - lastAngle); lastAngle = m; setT();
+  if (!dragging) { hover = zone(e); cv.style.cursor = hover ? (hover.kind === 'hour' ? 'pointer' : 'grab') : ''; return; }
+  const m = minuteAt(e); S.P += wrap(m - lastAngle); lastAngle = m; setT(true);
 });
 for (const ev of ['pointerup', 'pointercancel']) cv.addEventListener(ev, () => { dragging = false; });
 
-function setT() {
-  const step = snap(), t = Math.round(S.P / step) * step;
+function setHour(n) {
+  const base = n % 12 * 60;
+  S.P = base + 720 * Math.round((S.T - base) / 720); setT(false);
+  const [x, y] = at(n / 12 * Math.PI * 2, R * .74);
+  rings.push({x, y, r: 10, life: 1}); SFX.hop();
+}
+
+function setT(dragged) {
+  const step = snap(), t = Math.round(S.P / step) * step, hop = Math.floor(t / 60) - Math.floor(S.T / 60);
   if (t === S.T) return;
-  S.T = t; SFX.tick(mod(t, 60) / step % 4); renderLive();
+  S.T = t; S.nudgeSince = 0; S.nudged = false; SFX.tick(mod(t, 60) / step % 4); renderLive();
+  if (!dragged || !hop) return;
+  const h = mod(Math.floor(t / 60), 12) || 12, [x, y] = at(mod(t / 60, 12) / 12 * Math.PI * 2, R * .5);
+  floatText(x, y - 34, hop < 0 ? `‹ ${h}` : `${h} ›`, '#FFD34E');
 }
 
 /* ---------- zinnen in beeld ---------- */
@@ -586,12 +666,13 @@ function popCombo() { const c = $('#combo'); c.classList.remove('pop'); void c.o
 /* ---------- ronde ---------- */
 function pickTarget() {
   const L = LEVELS[S.level], options = [];
-  for (let d = 10; d <= 90; d++) if (L.minutes.includes(mod(S.T + d, 60))) options.push(S.T + d);
+  for (let d = 10; d <= REACH; d++) for (const t of [S.T + d, S.T - d]) if (L.minutes.includes(mod(t, 60))) options.push(t);
   S.target = options[Math.floor(Math.random() * options.length)];
 }
 
 function startRun() {
-  Object.assign(S, {phase: 'skate', T: START, P: START, disp: START, gate: 0, score: 0, combo: 0, best: 0, firstTry: 0});
+  const start = Math.floor(Math.random() * 24) * 60;
+  Object.assign(S, {phase: 'skate', T: start, P: start, disp: start, gate: 0, score: 0, combo: 0, best: 0, firstTry: 0});
   scratchC.getContext('2d').clearRect(0, 0, 2 * RB + 40, 2 * RB + 40);
   $('#start').hidden = true; $('#end').hidden = true;
   nextGate();
@@ -602,8 +683,9 @@ function nextGate() {
   if (S.gate === GATES) return endRun();
   if (BUILD.has(S.gate)) return startBuild();
   if (FROZEN.has(S.gate)) return startFrozen();
-  S.phase = 'skate'; pickTarget(); S.gateStart = performance.now(); S.holdSince = 0;
+  S.phase = 'skate'; pickTarget(); S.gateStart = performance.now(); S.holdSince = 0; S.nudgeSince = 0; S.nudged = false; S.touched = false;
   renderTarget();
+  if (!store.get('coached', false)) startCoach(S.gateStart);
 }
 
 function passGate(now) {

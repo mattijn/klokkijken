@@ -1,6 +1,6 @@
 # IJsbaan-klok
 
-Klokkijken als schaatsspel. Sleep de grote wijzer naar de goede tijd. Bij een bevroren poort schrijf je de tijd op, en Apple's on-device model leest je spelling. Bij een bouwpoort tik je de tijd met woordblokjes bij elkaar, en een fout blokje krijgt de regel die het breekt. De tijdlogica zit in `klok.py`; het model rekent nooit.
+Klokkijken als schaatsspel. Tik het uur en draai de grote wijzer naar de goede tijd. Bij een bevroren poort schrijf je de tijd op, en Apple's on-device model leest je spelling. Bij een bouwpoort tik je de tijd met woordblokjes bij elkaar, en een fout blokje krijgt de regel die het breekt. De tijdlogica zit in `klok.py`; het model rekent nooit.
 
 ```bash
 uv sync
