@@ -29,6 +29,7 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .dots{display:flex;gap:8px;align-items:center}
 .dot{width:13px;height:13px;border-radius:50%;border:2px solid var(--line);transition:all .2s}
 .dot.frozen{border-radius:3px;transform:rotate(45deg) scale(.9)}
+.dot.build{border-radius:3px;border-color:rgba(255,211,78,.55)}
 .dot.now{border-color:var(--pink);box-shadow:0 0 10px rgba(255,79,179,.6)}
 .dot.done{background:var(--cyan);border-color:var(--cyan)}
 .chip{all:unset;cursor:pointer;font:700 13px/1 var(--f-main);color:var(--lilac);border:1.5px solid var(--line);border-radius:999px;padding:9px 13px;white-space:nowrap}
@@ -157,17 +158,16 @@ const LEVELS = [
   {name: 'Half', minutes: [0, 30]},
   {name: 'Kwartier', minutes: [0, 15, 30, 45]},
   {name: 'Rond de half', minutes: Array.from({length: 12}, (_, i) => i * 5)},
-  {name: 'Zinnen bouwen', minutes: Array.from({length: 60}, (_, i) => i), build: true},
   {name: 'Digitaal', minutes: Array.from({length: 60}, (_, i) => i), digital: true},
 ];
-const GATES = 10, FROZEN = new Set([4, 9]), START = 18 * 60, HOLD = 350, FAST = 9000;
+const GATES = 10, BUILD = new Set([2, 7]), FROZEN = new Set([4, 9]), START = 18 * 60, HOLD = 350, FAST = 9000;
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem('ijsbaan.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('ijsbaan.' + k, JSON.stringify(v)); } catch (e) { /* alleen gemak */ } },
 };
 const S = {
-  phase: 'start', level: store.get('level', 0), unlocked: store.get('unlocked', 0),
+  phase: 'start', level: Math.min(store.get('level', 0), LEVELS.length - 1), unlocked: Math.min(store.get('unlocked', 0), LEVELS.length - 1),
   T: START, P: START, disp: START, target: START, gate: 0, score: 0, combo: 0, best: 0, firstTry: 0,
   gateStart: 0, holdSince: 0, attempts: 0, sound: store.get('sound', true),
   calm: store.get('calm', matchMedia('(prefers-reduced-motion: reduce)').matches),
@@ -547,8 +547,8 @@ function setT() {
 let hits = new Set();
 function renderTarget(cls = 'enter') {
   const el = $('#target');
-  if (LEVELS[S.level].build) {
-    el.innerHTML = `<span class="lbl">Bouw de zin</span><span class="digital">${hhmm(S.target)}</span>`;
+  if (BUILD.has(S.gate) && (S.phase === 'spin' || S.phase === 'build')) {
+    el.innerHTML = `<span class="lbl">Bouw de zin</span>${LEVELS[S.level].digital ? `<span class="digital">${hhmm(S.target)}</span>` : ''}`;
   } else if (S.phase === 'frozen' || S.phase === 'spin') {
     el.innerHTML = `<span class="frozen-lbl">Bevroren!</span>${LEVELS[S.level].digital ? `<span class="digital">${hhmm(S.target)}</span>` : ''}`;
   } else if (LEVELS[S.level].digital) {
@@ -577,7 +577,7 @@ function renderHud() {
   $('#combo').textContent = S.combo > 1 ? `×${Math.min(S.combo, 5)}` : '';
   $('#level').textContent = LEVELS[S.level].name;
   $('#dots').innerHTML = Array.from({length: GATES}, (_, i) =>
-    `<span class="dot${FROZEN.has(i) && !LEVELS[S.level].build ? ' frozen' : ''}${i < S.gate ? ' done' : ''}${i === S.gate && S.phase !== 'end' ? ' now' : ''}"></span>`).join('');
+    `<span class="dot${FROZEN.has(i) ? ' frozen' : ''}${BUILD.has(i) ? ' build' : ''}${i < S.gate ? ' done' : ''}${i === S.gate && S.phase !== 'end' ? ' now' : ''}"></span>`).join('');
 }
 function popCombo() { const c = $('#combo'); c.classList.remove('pop'); void c.offsetWidth; c.classList.add('pop'); }
 
@@ -598,7 +598,7 @@ function startRun() {
 function nextGate() {
   renderHud();
   if (S.gate === GATES) return endRun();
-  if (LEVELS[S.level].build) return startBuild();
+  if (BUILD.has(S.gate)) return startBuild();
   if (FROZEN.has(S.gate)) return startFrozen();
   S.phase = 'skate'; pickTarget(); S.gateStart = performance.now(); S.holdSince = 0;
   renderTarget();
@@ -617,14 +617,14 @@ function passGate(now) {
 
 function endRun() {
   S.phase = 'end'; renderHud(); renderLive();
-  const build = LEVELS[S.level].build, stars = build ? 1 + (S.firstTry >= 6) + (S.firstTry >= 9) : 1 + S.firstTry;
+  const special = BUILD.size + FROZEN.size, stars = 1 + (S.firstTry >= special / 2) + (S.firstTry === special);
   let unlocked = '';
   if (stars === 3 && S.level === S.unlocked && S.unlocked < LEVELS.length - 1) {
     S.unlocked++; store.set('unlocked', S.unlocked); unlocked = `Nieuw niveau open: ${LEVELS[S.unlocked].name}!`;
   }
   $('#stars').innerHTML = [0, 1, 2].map(i => `<span class="${i < stars ? 'on' : ''}">★</span>`).join('');
-  $('#stats').innerHTML = `<div><b>${S.score}</b><span>punten</span></div><div><b>×${Math.min(S.best, 5)}</b><span>beste reeks</span></div><div><b>${S.firstTry}/${build ? GATES : 2}</b><span>${build ? 'zinnen' : 'ijs'} in één keer</span></div>`;
-  $('#unlock').textContent = unlocked || (stars === 3 ? 'Drie sterren!' : build ? 'Bouw negen zinnen zonder misser voor drie sterren.' : 'Schrijf beide bevroren poorten in één keer goed voor drie sterren.');
+  $('#stats').innerHTML = `<div><b>${S.score}</b><span>punten</span></div><div><b>×${Math.min(S.best, 5)}</b><span>beste reeks</span></div><div><b>${S.firstTry}/${special}</b><span>bouw- en ijspoorten in één keer</span></div>`;
+  $('#unlock').textContent = unlocked || (stars === 3 ? 'Drie sterren!' : 'Haal alle bouw- en ijspoorten in één keer voor drie sterren.');
   renderLevels('#levels-end');
   $('#target').innerHTML = '';
   $('#end').hidden = false; SFX.fanfare(); cannons(40 + stars * 30);
