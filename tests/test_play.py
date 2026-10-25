@@ -87,7 +87,7 @@ def skate(page: Page) -> None:
 
 def build(page: Page) -> None:
     for word in page.evaluate("PHRASES[face(S.target)].map(([w]) => w)"):
-        page.click(f'.tray .word[data-word="{word}"]')
+        page.click(f'.tray .word[data-word="{word}"]:not([hidden])')
 
 
 def write(page: Page) -> None:
@@ -119,6 +119,49 @@ def play_round(page: Page, level: int) -> int:
 def test_a_round_per_level(chromium: Browser, url: str, level: int) -> None:
     page, errors = open_game(chromium, url)
     assert play_round(page, level) == 3
+    assert page.locator("#crash").is_hidden()
+    assert errors == []
+
+
+def test_taking_back_a_block(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    start_level(page, 2)
+    page.evaluate("S.gate = 2; nextGate()")
+    page.wait_for_selector(".tray .word")
+    first = page.evaluate("PHRASES[face(S.target)][0][0]")
+    page.click(f'.tray .word[data-word="{first}"]')
+    page.wait_for_function("S.placed.length === 1")
+    page.click("#back")
+    assert page.evaluate("S.placed") == []
+    assert page.locator("#built .tile").count() == 0
+    build(page)
+    page.wait_for_function("S.gate === 3")
+    assert page.evaluate("store.get('log').at(-1).first")
+    assert errors == []
+
+
+def test_a_new_level_is_chosen_and_started(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    assert play_round(page, 0) == 3
+    assert page.evaluate("[S.unlocked, S.level]") == [1, 1]
+    assert page.inner_text("#again") == "Naar Half!"
+    page.click("#levels-end .lv[data-level='0']")
+    assert page.inner_text("#again") == "Nog een rondje"
+    page.click("#levels-end .lv[data-level='1']")
+    page.click("#again")
+    page.wait_for_function("S.phase === 'skate'")
+    assert page.inner_text("#level") == "HALF"
+    assert errors == []
+
+
+def test_sound_that_will_not_start_keeps_the_game_going(chromium: Browser, url: str) -> None:
+    page, errors = open_game(chromium, url)
+    page.evaluate("""audio(); A.ctx.suspend();
+      A.ctx.resume = () => Promise.reject(new DOMException('Failed to start the audio device', 'InvalidStateError'));
+      true""")
+    page.wait_for_function("A.ctx.state === 'suspended'")
+    page.evaluate("audio()")
+    page.wait_for_timeout(200)
     assert page.locator("#crash").is_hidden()
     assert errors == []
 

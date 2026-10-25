@@ -61,7 +61,8 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .frozen-lbl{font:800 clamp(28px,4.4vw,44px)/1 var(--f-main);color:#DFF7FF;text-shadow:0 0 20px rgba(160,230,255,.9)}
 
 .live{position:fixed;left:0;right:0;bottom:max(18px,env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;z-index:4;padding:0 16px}
-.live .word{font-size:clamp(16px,2.4vw,24px);padding:8px 12px 9px;border-width:2px;opacity:.92}
+.live .blocks{flex-wrap:nowrap;gap:clamp(5px,1.5vw,10px)}
+.live .word{font-size:clamp(11px,3.4vw,24px);padding:.35em .5em .4em;border-width:2px;border-radius:.6em;opacity:.92;white-space:nowrap}
 .live .lbl{color:var(--mute)}
 .live.spot .lbl{color:var(--gold);font-size:15px}
 .live.spot .blocks{animation:spot 1s ease-in-out infinite}
@@ -75,8 +76,6 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
   -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 .panel[hidden]{display:none}
 .panel.wobble{animation:wobble .4s}
-.panel .who{font:700 12px/1 var(--f-main);letter-spacing:.2em;text-transform:uppercase;color:var(--cyan);margin-bottom:12px;display:flex;justify-content:space-between;gap:10px}
-.panel .who span:last-child{color:var(--mute);letter-spacing:.08em}
 .panel .ask{font:800 clamp(21px,3vw,27px)/1.3 var(--f-main);margin:0 0 6px}
 .panel .sub{color:var(--lilac);margin:0 0 14px}
 .panel .blocks{justify-content:flex-start;margin:10px 0 16px}
@@ -103,6 +102,8 @@ html,body{margin:0;height:100%;background:var(--night);color:var(--ink);font:400
 .tile,.tray .word{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-width:64px;min-height:52px}
 .tile small,.tray .word small{font:700 13px/1 var(--f-main);letter-spacing:.02em;opacity:.85}
 .tray .word:hover{border-color:var(--cyan)}
+.tray .word[hidden]{display:none}
+.built .back{padding:12px 16px;font-size:24px}
 .tray .word.nope{animation:wobble-x .35s}
 @keyframes wobble-x{25%{transform:translateX(-8px)}50%{transform:translateX(6px)}75%{transform:translateX(-3px)}}
 .steps{display:flex;gap:6px}.steps b{width:26px;height:6px;border-radius:3px;background:var(--line)}.steps b.on{background:var(--cyan)}
@@ -157,7 +158,7 @@ body.calm *{animation:none!important;transition:none!important}
 @media (max-width:640px){.hud .level{display:none}.dot{width:10px;height:10px}.dots{gap:5px}}
 @media (max-width:480px){
   .hud{gap:8px;padding-left:12px;padding-right:12px}.hud .right{gap:6px}.chip{padding:7px 9px;font-size:12px}.dot{width:8px;height:8px}.dots{gap:4px}
-  .panel{padding:14px 16px;border-radius:20px}.panel .who{margin-bottom:6px}.panel .ask{font-size:18px}
+  .panel{padding:14px 16px;border-radius:20px}.panel .ask{font-size:18px}
   .built{min-height:46px;margin:4px 0 10px;gap:8px}.built .slot{width:52px;height:44px}
   .tray{gap:8px}.tray .word{font-size:17px;padding:7px 12px;min-width:50px;min-height:44px}.tile{min-width:50px;min-height:44px}
 }
@@ -418,8 +419,9 @@ function shatter() {
 
 /* ---------- geluid ---------- */
 const A = {ctx: null};
+/* geluid is bijzaak: start het apparaat niet (na een ander tabblad of app), dan speelt het spel stil door tot de volgende tik */
 function audio() {
-  if (A.ctx) return;
+  if (A.ctx) { if (A.ctx.state !== 'running' && !document.hidden) A.ctx.resume().catch(mute); return; }
   const C = window.AudioContext || window.webkitAudioContext; A.ctx = new C();
   A.master = A.ctx.createGain(); A.master.gain.value = S.sound ? .8 : 0; A.master.connect(A.ctx.destination);
   const len = A.ctx.sampleRate * 2, buf = A.ctx.createBuffer(1, len, A.ctx.sampleRate), d = buf.getChannelData(0);
@@ -901,11 +903,12 @@ function passGate(now) {
 }
 
 function endRun() {
-  S.phase = 'end'; renderHud(); renderLive();
+  S.phase = 'end'; S.played = S.level; renderHud(); renderLive();
   const special = BUILD.size + FROZEN.size, stars = 1 + (S.firstTry >= special / 2) + (S.firstTry === special);
   let unlocked = '';
   if (stars >= 2 && S.level === S.unlocked && S.unlocked < LEVELS.length - 1) {
     S.unlocked++; store.set('unlocked', S.unlocked); unlocked = `Nieuw niveau open: ${LEVELS[S.unlocked].name}!`;
+    S.level = S.unlocked; store.set('level', S.level);
   }
   $('#stars').innerHTML = [0, 1, 2].map(i => `<span class="${i < stars ? 'on' : ''}">★</span>`).join('');
   $('#stats').innerHTML = `<div><b>${S.score}</b><span>punten</span></div><div><b>×${Math.min(S.best, 5)}</b><span>beste reeks</span></div><div><b>${S.firstTry}/${special}</b><span>in één keer goed</span></div>`;
@@ -921,6 +924,7 @@ function renderLevels(sel) {
   $(sel).querySelectorAll('.lv').forEach(b => b.addEventListener('click', () => {
     S.level = +b.dataset.level; store.set('level', S.level); renderLevels(sel); renderHud();
   }));
+  $('#again').textContent = S.level === S.played ? 'Nog een rondje' : `Naar ${LEVELS[S.level].name}!`;
 }
 
 /* ---------- bevroren poort: het taalmodel leest mee ---------- */
@@ -948,7 +952,7 @@ async function api(path, body) {
   if (!r.ok) throw new Error(`${path} gaf ${r.status}: ${await r.text()}`);
   return r.json();
 }
-function show(html, who = `<span>Schaatsleraar</span>${ENGINE === 'server' ? '<span>Apple-model op deze Mac</span>' : ''}`) { panel.hidden = false; panel.innerHTML = `<div class="who">${who}</div>${html}`; }
+function show(html) { panel.hidden = false; panel.innerHTML = html; }
 function thinking(text) { show(`<div class="thinking"><i></i><i></i><i></i>${text}</div>`); }
 function failed(err, retry) {
   show(`<p class="ask">Er ging iets mis met de leraar.</p><p class="sub">${esc(String(err.message || err))}</p><div class="choices"><button class="btn primary" type="button" id="retry">Opnieuw</button></div>`);
@@ -974,7 +978,7 @@ function startFrozen() {
 }
 
 function write(note = '', example = null) {
-  show(`<p class="ask">${note || 'Hoe laat is het? Schrijf het op.'}</p>${example ? `${blocks(example, 'enter')}<p class="sub">Schrijf het nu zelf.</p>` : '<p class="sub">Spelling maakt niet uit.</p>'}
+  show(`<p class="ask">${note || 'Schrijf de tijd.'}</p>${example ? `${blocks(example, 'enter')}<p class="sub">Schrijf het nu zelf.</p>` : ''}
     <form id="form"><input id="answer" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" aria-label="Jouw antwoord" placeholder="schrijf hier…">
     <button class="btn primary" type="submit">Ontdooi!</button><button class="btn ghost" type="button" id="samen-write">Samen doen</button></form>`);
   const input = $('#answer'); setTimeout(() => input.focus(), 50);
@@ -1039,7 +1043,7 @@ async function together() {
 }
 
 function walk(steps, i) {
-  if (i === steps.length) return build('Samen. Tik de blokjes.');
+  if (i === steps.length) return build('Samen. Tik de tijd.');
   const q = steps[i];
   show(`<p class="ask">${esc(q.ask)}</p>
     <div class="choices">${q.options.map(o => `<button class="btn" type="button">${esc(o)}</button>`).join('')}</div><p class="hint" id="hint"></p>`);
@@ -1066,14 +1070,16 @@ function startBuild() { spinTo(() => { S.phase = 'build'; S.misses = 0; build();
 
 const label = (word, digit) => digit ? `<span>${digit}</span><small>${esc(word)}</small>` : esc(word);
 
-async function build(lead = 'Tik de woorden op volgorde.') {
+async function build(lead = 'Tik de tijd.') {
   let res;
   try { res = await api('/build', clock()); } catch (err) { return failed(err, () => build(lead)); }
-  S.placed = [];
-  show(`<p class="ask">${lead}</p>${S.together ? example() : ''}<div class="built" id="built"><span class="slot"></span></div>
+  S.placed = []; S.used = [];
+  show(`<p class="ask">${lead}</p>${S.together ? example() : ''}<div class="built" id="built"><span class="slot"></span>
+    <button class="btn ghost back" id="back" type="button" hidden aria-label="Laatste blokje terug">↩</button></div>
     <div class="tray">${res.tray.map(([w, d]) => `<button class="word" type="button" data-word="${esc(w)}" data-digit="${d || ''}">${label(w, d)}</button>`).join('')}</div>
-    <p class="hint" id="hint"></p>${S.together ? '' : '<div class="choices"><button class="btn ghost" type="button" id="samen-build">Samen doen</button></div>'}`, '<span>Zinnen bouwen</span>');
+    <p class="hint" id="hint"></p>${S.together ? '' : '<div class="choices"><button class="btn ghost" type="button" id="samen-build">Samen doen</button></div>'}`);
   panel.querySelectorAll('.tray .word').forEach(b => b.addEventListener('click', () => tap(b)));
+  $('#back').addEventListener('click', back);
   if (!S.together) $('#samen-build').addEventListener('click', e => {
     S.together = true; $('#built').insertAdjacentHTML('beforebegin', example()); e.target.parentElement.remove();
   });
@@ -1089,13 +1095,19 @@ async function tap(block) {
     block.classList.remove('nope'); void block.offsetWidth; block.classList.add('nope');
     return;
   }
-  S.placed.push(word); block.remove(); $('#hint').textContent = '';
+  S.placed.push(word); S.used.push(block); block.hidden = true; $('#hint').textContent = ''; $('#back').hidden = false;
   $('#built .slot').insertAdjacentHTML('beforebegin', `<span class="word tile ${res.role} pop">${label(word, digit)}</span>`);
   SFX.lock(S.placed.length * 2);
   if (!res.done) return;
-  $('#built .slot').remove();
+  $('#built .slot').remove(); $('#back').remove();
   panel.querySelectorAll('.tray .word').forEach(b => { b.disabled = true; });
   thaw(S.misses || S.together ? 50 : 100, !S.misses && !S.together);
+}
+
+/* per ongeluk getikt: het laatste blokje gaat terug naar de bak */
+function back() {
+  S.placed.pop(); S.used.pop().hidden = false; [...$('#built').querySelectorAll('.tile')].at(-1).remove();
+  $('#back').hidden = !S.placed.length;
 }
 
 /* ---------- voor ouders: één ding om op te letten, met een eigen voorbeeld en iets voor thuis; alles in deze browser ---------- */
@@ -1204,7 +1216,8 @@ $('#t-calm').addEventListener('click', () => { S.calm = !S.calm; store.set('calm
 $('#go').addEventListener('click', () => { audio(); startRun(); });
 $('#again').addEventListener('click', () => { audio(); startRun(); });
 addEventListener('resize', resize);
-document.addEventListener('visibilitychange', () => { if (A.ctx) document.hidden ? A.ctx.suspend() : A.ctx.resume(); });
+document.addEventListener('visibilitychange', () => { if (A.ctx && document.hidden) A.ctx.suspend().catch(mute); });
+function mute(err) { console.warn('Geen geluid:', err); }
 
 (async function boot() {
   snow = Array.from({length: 60}, () => ({x: Math.random() * innerWidth, y: Math.random() * innerHeight, v: .3 + Math.random() * .7, s: .8 + Math.random() * 1.8, o: .2 + Math.random() * .5, p: Math.random() * 6}));
